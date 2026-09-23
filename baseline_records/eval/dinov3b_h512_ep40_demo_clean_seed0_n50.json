@@ -1,0 +1,68 @@
+{
+  "results": [
+    {
+      "task_name": "adjust_bottle",
+      "success": 50,
+      "test_num": 50,
+      "success_rate": 1.0
+    },
+    {
+      "task_name": "grab_roller",
+      "success": 50,
+      "test_num": 50,
+      "success_rate": 1.0
+    },
+    {
+      "task_name": "hanging_mug",
+      "success": 24,
+      "test_num": 50,
+      "success_rate": 0.48
+    },
+    {
+      "task_name": "move_stapler_pad",
+      "success": 18,
+      "test_num": 50,
+      "success_rate": 0.36
+    },
+    {
+      "task_name": "open_microwave",
+      "success": 41,
+      "test_num": 50,
+      "success_rate": 0.82
+    },
+    {
+      "task_name": "press_stapler",
+      "success": 47,
+      "test_num": 50,
+      "success_rate": 0.94
+    },
+    {
+      "task_name": "scan_object",
+      "success": 42,
+      "test_num": 50,
+      "success_rate": 0.84
+    },
+    {
+      "task_name": "stack_blocks_two",
+      "success": 35,
+      "test_num": 50,
+      "success_rate": 0.7
+    },
+    {
+      "task_name": "stamp_seal",
+      "success": 17,
+      "test_num": 50,
+      "success_rate": 0.34
+    },
+    {
+      "task_name": "turn_switch",
+      "success": 27,
+      "test_num": 50,
+      "success_rate": 0.54
+    }
+  ],
+  "macro_success_rate": 0.702,
+  "micro_success_rate": 0.702,
+  "total_success": 351,
+  "total_trials": 500
+}

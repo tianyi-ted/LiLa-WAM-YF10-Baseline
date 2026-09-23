@@ -1,0 +1,51 @@
+__pycache__/
+*.py[cod]
+
+# Local datasets, pretrained weights, checkpoints, and generated outputs
+data/
+pretrained/
+checkpoints_vla/
+eval_result/
+log/
+logs/
+YF_orign/
+
+*.hdf5
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.mp4
+*.avi
+
+# Keep the small frozen YF10 records that are already part of this snapshot.
+# Ignore unrelated future artifact trees by default.
+artifacts/*
+!artifacts/yf10/
+artifacts/yf10/*
+!artifacts/yf10/norm_stats.json
+!artifacts/yf10/raw_subset_manifest.json
+!artifacts/yf10/baseline_freeze/
+!artifacts/yf10/preprocess_reports/
+artifacts/yf10/preprocess_reports/stationary_applied/
+artifacts/yf10/preprocess_reports/stationary_dryrun/
+
+# Local credentials and editor/office temporary files
+.env
+.env.*
+*.pem
+*.key
+.vscode/
+.idea/
+*.docx
+.~*
+
+# Real-robot recordings, camera snapshots, and inference diagnostics.
+# Keep source/config/docs in robot/ visible without accidentally staging GBs.
+/robot/edulite_a3_collect/collected_data/
+/robot/edulite_a3_collect/collected_data_single/
+/robot/edulite_a3_collect/camera_snapshots/
+/robot/edulite_a3_vla/inference_outputs/
+/robot/edulite_a3_vla/inference_outputs_single/
+/robot/ABPolicy-code/
+/robot/EDULITE_A3/

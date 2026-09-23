@@ -1,0 +1,55 @@
+# Native single-arm LiLa-WAM deployment. Fill the checkpoint path after training.
+# Relative paths are resolved against this file; never use the old 14D checkpoint.
+model:
+  config_path: ../../configs/edulite_single.yaml
+  checkpoint_path: ../../checkpoints_vla/edulite_single/sft_REPLACE_WITH_RUN_TIMESTAMP/checkpoint_epoch_50.pt
+  norm_stats_path: ../../utils/stat-edulite-single.json
+  device: cuda
+  dtype: bfloat16
+  task_name: place_red_block_into_box
+  instruction: "pick up the red block and place it in the box"
+
+hardware:
+  collector_config_path: ../edulite_a3_collect/config.master_slave.yaml
+  arm_side: right
+  camera_name: head_camera
+
+runtime:
+  action_rate_hz: 30.0
+  control_rate_hz: 100.0
+  prefetch_threshold_actions: 8
+  start_delay_s: 3.0
+  max_episode_s: 40.0
+  camera_max_age_s: 0.25
+  require_preview_before_execute: true
+  joint_bspline:
+    enabled: true
+    degree: 3
+    history_actions: 8
+    control_points: 8
+    history_weight: 4.0
+    fallback_if_worse: true
+
+visualization:
+  enabled: true
+  output_root: ./inference_outputs_single
+  save_video: true
+  video_fps: 30.0
+
+safety:
+  clamp_to_training_range: true
+  joint_limit_margin_rad: 0.15
+  filter_omega: 10.0
+  max_velocity_rad_s: [0.35, 0.35, 0.35, 0.45, 0.45, 0.45]
+  max_acceleration_rad_s2: [1.2, 1.2, 1.2, 1.8, 1.8, 1.8]
+  gripper_filter_alpha: 0.45
+  gripper_max_target_rate_norm_s: 1.00
+  gripper_command_deadband_norm: 0.005
+  max_target_step_rad: [0.08, 0.08, 0.08, 0.10, 0.10, 0.10]
+  max_follow_error_rad: 0.30
+  follow_error_cycles: 20
+  feedback_timeout_s: 0.20
+  startup_feedback_timeout_s: 2.0
+  model_command_timeout_s: 1.0
+  raw_joint_limit_tolerance_rad: 0.25
+  raw_gripper_tolerance: 0.20

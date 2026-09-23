@@ -1,0 +1,5 @@
+Outlier Report - Mode: both - Total: 0
+============================================================
+Threshold: Action joint dims exceed ±π (3.1416)
+Delete mode: OFF
+

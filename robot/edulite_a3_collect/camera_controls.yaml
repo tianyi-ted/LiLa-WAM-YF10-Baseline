@@ -1,0 +1,38 @@
+# Independent per-camera V4L2 settings; loaded by collection and preview.
+# Names/ranges taken from the user's /dev/video0 and /dev/video8 control dump.
+# Manual values are starting settings; verify the resulting image before collecting.
+# enabled=false preserves current device settings; it does NOT lock them.
+# Order matters: automatic modes first, manual values second.
+cameras:
+  head_camera:
+    enabled: true
+    controls:
+      # The camera exposes no manual temperature/RGB gain controls. With AWB
+      # disabled, the 2026-09-16 preview showed a strong green cast on the
+      # white tabletop. Use the device's AWB to restore neutral colors.
+      # This may still adapt as lighting changes between experiments.
+      white_balance_automatic: 1
+      brightness: 50
+      contrast: 128
+      saturation: 128
+      hue: 128
+  chest_camera:
+    enabled: true
+    controls:
+      auto_exposure: 1  # Device menu: 1=Manual Mode.
+      exposure_dynamic_framerate: 0
+      # Previously inactive values are starting points, not measured auto results.
+      # V4L2 unit is 100 us: 100 = 10 ms, one 100 Hz light cycle.
+      # A 6 ms exposure (60) showed moving horizontal brightness bands.
+      exposure_time_absolute: 100
+      white_balance_automatic: 0
+      white_balance_temperature: 4600
+      gain: 4  # Compensate for longer exposure; increase gradually if too dark.
+      brightness: 0
+      contrast: 50
+      saturation: 64
+      hue: 0
+      gamma: 300
+      sharpness: 50
+      backlight_compensation: 0
+      power_line_frequency: 1  # Device menu: 50 Hz.

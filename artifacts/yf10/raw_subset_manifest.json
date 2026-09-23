@@ -1,0 +1,152 @@
+{
+  "source": "/media/lab347-no10/data/tianyi/RoboTwin_datasets",
+  "output": "/home/lab347-no10/Tianyi/LiLa-WAM/data_yf10_c50_r200",
+  "selection": "natural episode-number order",
+  "requested_limits": {
+    "demo_clean": 50,
+    "demo_randomized": 200
+  },
+  "tasks": {
+    "adjust_bottle": {
+      "demo_clean": {
+        "available": 50,
+        "selected": 50,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 489,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode201.hdf5"
+      }
+    },
+    "grab_roller": {
+      "demo_clean": {
+        "available": 49,
+        "selected": 49,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 490,
+        "selected": 200,
+        "first": "episode1.hdf5",
+        "last": "episode204.hdf5"
+      }
+    },
+    "hanging_mug": {
+      "demo_clean": {
+        "available": 50,
+        "selected": 50,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 487,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode204.hdf5"
+      }
+    },
+    "move_stapler_pad": {
+      "demo_clean": {
+        "available": 49,
+        "selected": 49,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 500,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode199.hdf5"
+      }
+    },
+    "open_microwave": {
+      "demo_clean": {
+        "available": 50,
+        "selected": 50,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 500,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode199.hdf5"
+      }
+    },
+    "press_stapler": {
+      "demo_clean": {
+        "available": 47,
+        "selected": 47,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 478,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode207.hdf5"
+      }
+    },
+    "scan_object": {
+      "demo_clean": {
+        "available": 50,
+        "selected": 50,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 497,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode202.hdf5"
+      }
+    },
+    "stack_blocks_two": {
+      "demo_clean": {
+        "available": 50,
+        "selected": 50,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 500,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode199.hdf5"
+      }
+    },
+    "stamp_seal": {
+      "demo_clean": {
+        "available": 49,
+        "selected": 49,
+        "first": "episode1.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 496,
+        "selected": 200,
+        "first": "episode0.hdf5",
+        "last": "episode200.hdf5"
+      }
+    },
+    "turn_switch": {
+      "demo_clean": {
+        "available": 48,
+        "selected": 48,
+        "first": "episode0.hdf5",
+        "last": "episode49.hdf5"
+      },
+      "demo_randomized": {
+        "available": 484,
+        "selected": 200,
+        "first": "episode1.hdf5",
+        "last": "episode204.hdf5"
+      }
+    }
+  },
+  "total_selected_hdf5": 2492
+}

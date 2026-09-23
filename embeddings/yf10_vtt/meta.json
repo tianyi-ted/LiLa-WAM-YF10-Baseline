@@ -1,0 +1,63 @@
+{
+  "dino_checkpoint": "/home/lab347-no10/Tianyi/LiLa-WAM/pretrained/dinov3-vitl16",
+  "hidden_size": 1024,
+  "image_size": [
+    320,
+    240
+  ],
+  "data_mode": "both",
+  "camera_name": "head_camera",
+  "feature": "last_layer_cls_diff (last_frame - first_frame), averaged per task",
+  "tasks": {
+    "adjust_bottle": {
+      "num_episodes": 250,
+      "dim": 1024,
+      "norm": 6.6180033683776855
+    },
+    "grab_roller": {
+      "num_episodes": 214,
+      "dim": 1024,
+      "norm": 11.905537605285645
+    },
+    "hanging_mug": {
+      "num_episodes": 247,
+      "dim": 1024,
+      "norm": 5.440774917602539
+    },
+    "move_stapler_pad": {
+      "num_episodes": 249,
+      "dim": 1024,
+      "norm": 6.8490309715271
+    },
+    "open_microwave": {
+      "num_episodes": 250,
+      "dim": 1024,
+      "norm": 7.343484401702881
+    },
+    "press_stapler": {
+      "num_episodes": 238,
+      "dim": 1024,
+      "norm": 8.381844520568848
+    },
+    "scan_object": {
+      "num_episodes": 249,
+      "dim": 1024,
+      "norm": 8.609134674072266
+    },
+    "stack_blocks_two": {
+      "num_episodes": 250,
+      "dim": 1024,
+      "norm": 11.31450080871582
+    },
+    "stamp_seal": {
+      "num_episodes": 249,
+      "dim": 1024,
+      "norm": 6.406694412231445
+    },
+    "turn_switch": {
+      "num_episodes": 245,
+      "dim": 1024,
+      "norm": 8.692070007324219
+    }
+  }
+}
