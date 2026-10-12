@@ -1,9 +1,12 @@
 import os
 import sys
+import random
 import torch
+import numpy as np
 import logging
 import argparse
 import time
+import math
 from datetime import datetime
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -21,6 +24,27 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
+
+
+def seed_everything(seed, deterministic=False):
+    """Seed training RNGs; DataLoader shuffling uses its own generator below."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if deterministic:
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True, warn_only=True)
+
+
+def seed_worker(worker_id):
+    """Seed Python/NumPy inside each DataLoader worker from PyTorch's worker seed."""
+    del worker_id
+    worker_seed = torch.initial_seed() % (2 ** 32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
 
 
 def load_config(config_path):
@@ -46,6 +70,11 @@ def build_train_config_from_yaml(cfg):
     """Extract the training-parameter dict needed by VLAWrapper from OmegaConf cfg.training"""
     t = cfg.training
     ff = cfg.model.get('future_feat', {})
+    intent = cfg.model.get('global_intent', {})
+    spatial = cfg.model.get('spatial_intent', {})
+    future_offset = cfg.dataset.get('future_frame_offset', None)
+    if future_offset is None:
+        future_offset = cfg.common.action_chunk_size
     return {
         'time_mu': t.time_mu,
         'time_sigma': t.time_sigma,
@@ -54,7 +83,58 @@ def build_train_config_from_yaml(cfg):
         'vel_weight_sigma': t.vel_weight_sigma,
         'use_future_feat': ff.get('enabled', False) if ff else False,
         'lambda_future_feat': t.get('lambda_future_feat', 0.0),
+        'use_global_intent': intent.get('enabled', False) if intent else False,
+        'lambda_intent': t.get('lambda_intent', 0.0),
+        'intent_cosine_weight': t.get('intent_cosine_weight', 0.0),
+        'intent_cosine_eps': t.get('intent_cosine_eps', 1.0e-4),
+        'intent_horizon': future_offset,
+        'use_spatial_intent': spatial.get('enabled', False) if spatial else False,
+        'lambda_spatial_intent': t.get('lambda_spatial_intent', 0.0),
+        'spatial_horizon': future_offset,
     }
+
+
+def load_init_weights(action_model, checkpoint_state):
+    """Load a baseline exactly while allowing only explicitly added intent modules."""
+    if not (action_model.use_global_intent or action_model.use_spatial_intent):
+        return action_model.load_state_dict(checkpoint_state, strict=True)
+
+    current_state = action_model.state_dict()
+    unexpected = sorted(set(checkpoint_state) - set(current_state))
+    mismatched = sorted(
+        key for key in set(checkpoint_state) & set(current_state)
+        if checkpoint_state[key].shape != current_state[key].shape
+    )
+    missing = sorted(set(current_state) - set(checkpoint_state))
+    allowed_prefixes = (
+        'intent_predictor.',
+        'intent_to_token.',
+        'type_emb_intent',
+        'intent_gate',
+        'spatial_intent_predictor.',
+        'spatial_to_tokens.',
+        'type_emb_spatial',
+        'spatial_gate',
+    )
+    disallowed_missing = [
+        key for key in missing if not key.startswith(allowed_prefixes)
+    ]
+    if unexpected or mismatched or disallowed_missing:
+        raise RuntimeError(
+            "Unsafe baseline initialization for intent-augmented model: "
+            f"unexpected={unexpected}, shape_mismatch={mismatched}, "
+            f"disallowed_missing={disallowed_missing}"
+        )
+
+    msg = action_model.load_state_dict(checkpoint_state, strict=False)
+    loaded_keys = len(checkpoint_state) - len(unexpected)
+    logger.info(
+        f"Baseline-compatible partial load: loaded={loaded_keys}, "
+        f"new_intent_keys={len(msg.missing_keys)}, unexpected={len(msg.unexpected_keys)}"
+    )
+    if msg.missing_keys:
+        logger.info(f"New intent parameters initialized from config seed: {msg.missing_keys}")
+    return msg
 
 
 if __name__ == "__main__":
@@ -92,6 +172,13 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
 
+    train_seed = int(config.training.get('seed', 0))
+    deterministic = bool(config.training.get('deterministic', False))
+    seed_everything(train_seed, deterministic=deterministic)
+    loader_generator = torch.Generator()
+    loader_generator.manual_seed(train_seed)
+    logger.info(f"Training seed: {train_seed} | Deterministic algorithms: {deterministic}")
+
     # Training hyperparameters
     epochs = config.training.epochs
     grad_accum_steps = config.training.grad_accum_steps
@@ -107,7 +194,8 @@ if __name__ == "__main__":
                        f"Check your config.")
 
     logger.info(f"Epochs: {epochs} | Batch: {batch_size} | "
-                f"grad_accum: {grad_accum_steps} | save_every: {save_interval_epoch} ep")
+                f"grad_accum: {grad_accum_steps} | effective_batch: {batch_size * grad_accum_steps} | "
+                f"save_every: {save_interval_epoch} ep")
     logger.info(f"LR schedule: CosineAnnealingLR {lr:.2e} -> {lr_min:.2e}")
     logger.info(f"DINOv3 feat_layers: {list(config.model.vision_encoder.feat_layers)} | "
                 f"include_cls_register: {config.model.vision_encoder.include_cls_register}")
@@ -126,6 +214,8 @@ if __name__ == "__main__":
         pin_memory=config.system.pin_memory,
         collate_fn=collate_fn,
         drop_last=True,
+        worker_init_fn=seed_worker,
+        generator=loader_generator,
     )
     logger.info(f"Dataset Size: {len(train_dataset)} | Batches per Epoch: {len(train_dataloader)}")
 
@@ -155,15 +245,39 @@ if __name__ == "__main__":
                 + (f" (target_layer={ff_cfg.get('target_layer', -1)}, "
                    f"lambda={config.training.get('lambda_future_feat', 0.0)})" if use_future_feat else ""))
 
+    intent_cfg = config.model.get('global_intent', {})
+    spatial_cfg = config.model.get('spatial_intent', {})
+    use_global_intent = bool(intent_cfg.get('enabled', False)) if intent_cfg else False
+    logger.info(
+        f"Global Intent: {'ENABLED' if use_global_intent else 'DISABLED'}"
+        + (f" (inject={intent_cfg.get('inject_into_dit', False)}, "
+           f"H={config.dataset.get('future_frame_offset', config.common.action_chunk_size)}, "
+           f"lambda={config.training.get('lambda_intent', 0.0)}, "
+           f"gate_init={intent_cfg.get('gate_init', 0.0)}, "
+           f"gate_trainable={intent_cfg.get('gate_trainable', True)})"
+           if use_global_intent else "")
+    )
+    use_spatial_intent = bool(spatial_cfg.get('enabled', False)) if spatial_cfg else False
+    logger.info(
+        f"Spatial Intent: {'ENABLED' if use_spatial_intent else 'DISABLED'}"
+        + (f" (inject={spatial_cfg.get('inject_into_dit', False)}, "
+           f"lambda={config.training.get('lambda_spatial_intent', 0.0)}, "
+           f"regions={spatial_cfg.get('region_grid', [2, 4])}, "
+           f"gate_init={spatial_cfg.get('gate_init', 0.1)})"
+           if use_spatial_intent else "")
+    )
+
     action_model = ModelFactory.create_action_model(
         config,
         dino_hidden_size=dino_hidden_size,
         num_dino_layers=num_dino_layers,
         task_cond_dim=task_cond_dim,
         patch_size=patch_size,
+        num_register_tokens=num_register_tokens,
     )
 
     action_model.to(device, dtype=dtype)
+    action_model.keep_control_gates_fp32()
     action_model.train()
 
     count_parameters(action_model, model_name="Action Model (Trainable)")
@@ -194,9 +308,15 @@ if __name__ == "__main__":
         weight_decay=config.training.weight_decay,
     )
 
+    optimizer_steps_per_epoch = math.ceil(len(train_dataloader) / grad_accum_steps)
+    if optimizer_steps_per_epoch < 1:
+        raise ValueError(
+            f"grad_accum_steps={grad_accum_steps} exceeds batches/epoch={len(train_dataloader)}")
+    trailing_micro_batches = len(train_dataloader) % grad_accum_steps
+
     scheduler = CosineAnnealingLR(
         optimizer,
-        T_max=epochs * len(train_dataloader),
+        T_max=epochs * optimizer_steps_per_epoch,
         eta_min=lr_min,
     )
 
@@ -216,7 +336,7 @@ if __name__ == "__main__":
                     f"(fresh optimizer + lr schedule from config)")
         ckpt = torch.load(args.init_from, map_location='cpu', weights_only=False)
 
-        msg = action_model.load_state_dict(ckpt['model_state_dict'], strict=True)
+        msg = load_init_weights(action_model, ckpt['model_state_dict'])
         logger.info(f"Model loaded (init_from epoch={ckpt.get('epoch', '?')}). "
                     f"missing={len(msg.missing_keys)}, unexpected={len(msg.unexpected_keys)}")
         logger.info(f"Starting new stage: lr={lr:.2e} -> {lr_min:.2e}, epochs={epochs}")
@@ -240,7 +360,7 @@ if __name__ == "__main__":
         if 'scheduler_state_dict' in ckpt:
             scheduler.load_state_dict(ckpt['scheduler_state_dict'])
         else:
-            steps_done = ckpt['epoch'] * len(train_dataloader)
+            steps_done = ckpt['epoch'] * optimizer_steps_per_epoch
             for _ in range(steps_done):
                 scheduler.step()
             logger.warning("Old checkpoint without scheduler_state_dict; "
@@ -248,7 +368,23 @@ if __name__ == "__main__":
 
         start_epoch = ckpt['epoch']
         global_step = ckpt.get('global_step',
-                               start_epoch * len(train_dataloader) // grad_accum_steps)
+                               start_epoch * optimizer_steps_per_epoch)
+
+        # New checkpoints preserve RNG state so a run interrupted at an epoch
+        # boundary resumes with the same shuffle and stochastic training path.
+        if 'python_rng_state' in ckpt:
+            random.setstate(ckpt['python_rng_state'])
+        if 'numpy_rng_state' in ckpt:
+            np.random.set_state(ckpt['numpy_rng_state'])
+        if 'torch_rng_state' in ckpt:
+            torch.set_rng_state(ckpt['torch_rng_state'])
+        if (torch.cuda.is_available() and 'cuda_rng_state_all' in ckpt
+                and ckpt['cuda_rng_state_all'] is not None):
+            torch.cuda.set_rng_state_all(ckpt['cuda_rng_state_all'])
+        if 'dataloader_generator_state' in ckpt:
+            loader_generator.set_state(ckpt['dataloader_generator_state'])
+        else:
+            logger.warning("Checkpoint has no RNG state; resumed execution is not bitwise reproducible.")
         logger.info(f"Resumed at epoch={start_epoch}, global_step={global_step}, "
                     f"lr={optimizer.param_groups[0]['lr']:.2e}")
 
@@ -271,16 +407,23 @@ if __name__ == "__main__":
         start_time = time.time()
 
         for step, batch in enumerate(train_dataloader):
+            # Use the actual divisor for the shorter final accumulation group,
+            # so its gradient magnitude matches a regular optimizer update.
+            accumulation_divisor = (
+                trailing_micro_batches
+                if trailing_micro_batches and step >= len(train_dataloader) - trailing_micro_batches
+                else grad_accum_steps
+            )
             with torch.amp.autocast('cuda', dtype=dtype):
                 loss, info_dic = model(batch)
-                loss = loss / grad_accum_steps
+                loss = loss / accumulation_divisor
 
             loss.backward()
 
-            current_step_loss = loss.item() * grad_accum_steps
+            current_step_loss = loss.item() * accumulation_divisor
             epoch_loss += current_step_loss
 
-            if (step + 1) % grad_accum_steps == 0:
+            if (step + 1) % grad_accum_steps == 0 or (step + 1) == len(train_dataloader):
                 torch.nn.utils.clip_grad_norm_(action_model.parameters(), max_norm=grad_clip_norm)
                 optimizer.step()
                 scheduler.step()
@@ -294,11 +437,25 @@ if __name__ == "__main__":
                     log_msg = (
                         f"Epoch [{epoch+1}/{epochs}] "
                         f"Step [{step+1}/{len(train_dataloader)}] "
-                        f"Loss: {info_dic['loss_mse'] * grad_accum_steps:.4f} "
+                        f"Loss: {info_dic['loss_mse']:.4f} "
                         f"LR: {current_lr:.2e} "
                     )
                     if use_future_feat:
                         log_msg += f"FutureFeat: {info_dic.get('loss_future_feat', 0.0):.4f} "
+                    if use_global_intent:
+                        log_msg += (
+                            f"Intent: {info_dic.get('loss_intent', 0.0):.4f} "
+                            f"TargetNorm: {info_dic.get('intent_target_norm', 0.0):.3f} "
+                            f"PredNorm: {info_dic.get('intent_pred_norm', 0.0):.3f} "
+                            f"Gate: {info_dic.get('intent_gate', 0.0):.6f} "
+                        )
+                    if use_spatial_intent:
+                        log_msg += (
+                            f"Spatial: {info_dic.get('loss_spatial_intent', 0.0):.4f} "
+                            f"SpatialTargetNorm: {info_dic.get('spatial_target_norm', 0.0):.3f} "
+                            f"SpatialPredNorm: {info_dic.get('spatial_pred_norm', 0.0):.3f} "
+                            f"SpatialGate: {info_dic.get('spatial_gate', 0.0):.6f} "
+                        )
                     logger.info(log_msg)
 
         avg_loss = epoch_loss / len(train_dataloader)
@@ -315,6 +472,12 @@ if __name__ == "__main__":
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
                 'loss': avg_loss,
+                'train_seed': train_seed,
+                'python_rng_state': random.getstate(),
+                'numpy_rng_state': np.random.get_state(),
+                'torch_rng_state': torch.get_rng_state(),
+                'cuda_rng_state_all': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                'dataloader_generator_state': loader_generator.get_state(),
             }
             torch.save(save_dict, ckpt_path)
             logger.info(f"Saved checkpoint to {ckpt_path}")

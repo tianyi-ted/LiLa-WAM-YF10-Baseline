@@ -9,11 +9,43 @@ import os
 import subprocess
 import matplotlib.pyplot as plt
 
-# RoboTwin internally uses many paths relative to its root directory
-# (./assets/..., ./task_config/...), so make sure the cwd is always the
-# directory containing this script (the RoboTwin root), no matter where
-# the process is launched from.
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+# RoboTwin's legacy evaluation stack imports modules from the repository root
+# and several env helpers open paths such as ./assets/... at import time.  This
+# bridge is commonly exposed inside RoboTwin through a symlink whose target is
+# in LiLa-WAM, so __file__/sys.path[0] alone cannot reliably identify the
+# RoboTwin root.  Resolve it explicitly before importing anything from envs.
+def _resolve_robotwin_root():
+    candidates = [
+        os.environ.get("ROBOTWIN_ROOT"),
+        os.getcwd(),
+        os.path.dirname(os.path.abspath(sys.argv[0])),
+        os.path.dirname(os.path.abspath(__file__)),
+    ]
+    checked = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        candidate = os.path.abspath(os.path.expanduser(candidate))
+        if candidate in checked:
+            continue
+        checked.append(candidate)
+        if (
+            os.path.isfile(os.path.join(candidate, "envs", "__init__.py"))
+            and os.path.isdir(os.path.join(candidate, "assets"))
+            and os.path.isdir(os.path.join(candidate, "task_config"))
+        ):
+            return candidate
+    raise RuntimeError(
+        "Could not locate the RoboTwin root. Set ROBOTWIN_ROOT to the directory "
+        "containing envs/, assets/, and task_config/. Checked: "
+        + ", ".join(checked)
+    )
+
+
+ROBOTWIN_ROOT = _resolve_robotwin_root()
+os.chdir(ROBOTWIN_ROOT)
+if ROBOTWIN_ROOT not in sys.path:
+    sys.path.insert(0, ROBOTWIN_ROOT)
 
 from envs import CONFIGS_PATH
 from envs.utils.create_actor import UnStableError
@@ -34,7 +66,7 @@ logging.getLogger("curobo").setLevel(logging.WARNING)
 
 
 current_file_path = os.path.abspath(__file__)
-parent_directory = os.path.dirname(current_file_path)
+parent_directory = ROBOTWIN_ROOT
 
 
 def class_decorator(task_name):

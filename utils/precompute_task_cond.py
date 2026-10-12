@@ -59,12 +59,15 @@ def preprocess_image(img_np, image_size):
     return img
 
 
-def scan_episodes(dataset_dir, data_mode, camera_name):
+def scan_episodes(dataset_dir, data_mode, camera_name, task_names=None):
     """Return [{task_name, hdf5_path}]; clean+randomized share the same task_name"""
     root = Path(dataset_dir)
     splits = ["demo_clean", "demo_randomized"] if data_mode == "both" else [f"demo_{data_mode}"]
     episodes = []
+    allowed_tasks = None if task_names is None else set(task_names)
     for task_dir in sorted([d for d in root.iterdir() if d.is_dir()]):
+        if allowed_tasks is not None and task_dir.name not in allowed_tasks:
+            continue
         for split in splits:
             data_dir = task_dir / split / "data"
             if not data_dir.exists():
@@ -142,9 +145,19 @@ def main():
     hidden_size = getattr(dino_cfg, "hidden_size", None)
 
     logger.info(f"Scanning episodes under {dataset_dir} (mode={data_mode}) ...")
-    episodes = scan_episodes(dataset_dir, data_mode, camera_name)
+    task_names = cfg.dataset.get('task_names', None)
+    if task_names is not None:
+        task_names = list(task_names)
+    episodes = scan_episodes(dataset_dir, data_mode, camera_name, task_names)
     if not episodes:
         raise ValueError(f"No episodes found under {dataset_dir}")
+    if task_names is not None:
+        found_tasks = {ep['task_name'] for ep in episodes}
+        missing_tasks = sorted(set(task_names) - found_tasks)
+        if missing_tasks:
+            raise ValueError(
+                f"Configured task_names have no episodes in demo_{data_mode}: {missing_tasks}"
+            )
     logger.info(f"Found {len(episodes)} episodes.")
 
     task_diffs = defaultdict(list)   # task_name -> [diff, ...]

@@ -24,17 +24,27 @@ def process_single_file(file_path):
                 return (file_path, False, None, None, None, None, "Missing joint_action/vector", [], [])
             
             action_data = f['joint_action']['vector'][:]
+            if action_data.ndim != 2 or action_data.shape[1] not in (7, 14):
+                return (file_path, False, None, None, None, None,
+                        f"Expected action [T,7] or [T,14], got {action_data.shape}", [], [])
             
             try:
                 l_pose = f['endpose']['left_endpose'][:]
                 l_grip = f['endpose']['left_gripper'][:]
-                r_pose = f['endpose']['right_endpose'][:]
-                r_grip = f['endpose']['right_gripper'][:]
-                
                 if l_grip.ndim == 1: l_grip = l_grip.reshape(-1, 1)
-                if r_grip.ndim == 1: r_grip = r_grip.reshape(-1, 1)
-                
-                state_data = np.concatenate([l_pose, l_grip, r_pose, r_grip], axis=1)
+                parts = [l_pose, l_grip]
+                if action_data.shape[1] == 14:
+                    r_pose = f['endpose']['right_endpose'][:]
+                    r_grip = f['endpose']['right_gripper'][:]
+                    if r_grip.ndim == 1: r_grip = r_grip.reshape(-1, 1)
+                    parts.extend([r_pose, r_grip])
+                elif 'endpose/right_endpose' in f or 'endpose/right_gripper' in f:
+                    return (file_path, False, None, None, None, None,
+                            "7D action has right-arm state fields", [], [])
+                state_data = np.concatenate(parts, axis=1)
+                if state_data.shape != (len(action_data), 8 if action_data.shape[1] == 7 else 16):
+                    return (file_path, False, None, None, None, None,
+                            f"Action/state length or dimension mismatch: {action_data.shape}, {state_data.shape}", [], [])
             except KeyError as e:
                 return (file_path, False, None, None, None, None, f"Missing state key: {e}", [], [])
 
@@ -45,11 +55,19 @@ def process_single_file(file_path):
         # TODO
         # Detect whether joint dims exceed [-π, π] (skip gripper dims 6, 13)
         # PI = np.pi + 0.3
-        PI = np.pi 
+        PI = np.pi
         joint_dims = [i for i in range(action_data.shape[1]) if i not in [6, 13]]
         act_outlier_dims = []
         for jd in joint_dims:
-            if np.any(action_data[:, jd] > PI) or np.any(action_data[:, jd] < -PI):
+            # EDULITE J2/J3 legitimately extend outside ±pi. Keep the old
+            # RoboTwin screening rule unchanged for 14D simulation data.
+            lower, upper = (-PI, PI)
+            if action_data.shape[1] == 7:
+                lower, upper = [
+                    (-2.79253, 2.79253), (0.0, 3.66519), (-4.01426, 0.0),
+                    (-1.5708, 1.5708), (-1.5708, 1.5708), (-1.5708, 1.5708),
+                ][jd]
+            if np.any(action_data[:, jd] > upper) or np.any(action_data[:, jd] < lower):
                 act_outlier_dims.append(jd)
 
         state_min = np.min(state_data, axis=0)
@@ -120,6 +138,11 @@ def process_task_files(task_info):
                 results['act_global_min'] = act_min
                 results['act_global_max'] = act_max
             else:
+                if results['act_global_min'].shape != act_min.shape:
+                    raise ValueError(
+                        f"Mixed action dimensions in task {task_name}: "
+                        f"{results['act_global_min'].shape} versus {act_min.shape} ({fpath})"
+                    )
                 results['act_global_min'] = np.minimum(results['act_global_min'], act_min)
                 results['act_global_max'] = np.maximum(results['act_global_max'], act_max)
 
@@ -127,6 +150,11 @@ def process_task_files(task_info):
                 results['state_global_min'] = state_min
                 results['state_global_max'] = state_max
             else:
+                if results['state_global_min'].shape != state_min.shape:
+                    raise ValueError(
+                        f"Mixed state dimensions in task {task_name}: "
+                        f"{results['state_global_min'].shape} versus {state_min.shape} ({fpath})"
+                    )
                 results['state_global_min'] = np.minimum(results['state_global_min'], state_min)
                 results['state_global_max'] = np.maximum(results['state_global_max'], state_max)
             
@@ -169,7 +197,8 @@ def _delete_episode_files(hdf5_path):
     
     return deleted
 
-def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_processes=16, data_mode="clean", delete_outliers=False):
+def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_processes=16,
+                               data_mode="clean", delete_outliers=False, task_names=None):
     """
     Main function: multiprocess statistics over the HDF5 dataset, per-task stats + global aggregation
     When delete_outliers=True, automatically delete out-of-range hdf5 files and their instruction json files
@@ -183,6 +212,7 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
         print(f"\033[91m⚠ DELETE MODE: out-of-range files will be permanently deleted!\033[0m")
     
     # 1. Scan task directories
+    allowed_tasks = None if task_names is None else set(task_names)
     task_dirs = []
     for root_dir in root_dirs:
         if not os.path.exists(root_dir):
@@ -191,6 +221,8 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
 
         raw_dirs = os.listdir(root_dir)
         for d in raw_dirs:
+            if allowed_tasks is not None and d not in allowed_tasks:
+                continue
             full_path = os.path.join(root_dir, d)
             if os.path.isdir(full_path):
                 has_clean = os.path.exists(os.path.join(full_path, "demo_clean"))
@@ -198,6 +230,14 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
                 if has_clean or has_rand:
                     # Pack delete_outliers into the arguments
                     task_dirs.append((d, full_path, data_mode, delete_outliers))
+
+    if allowed_tasks is not None:
+        found_tasks = {task_name for task_name, _, _, _ in task_dirs}
+        missing_tasks = sorted(allowed_tasks - found_tasks)
+        if missing_tasks:
+            raise ValueError(
+                f"Requested task_names were not found under the dataset roots: {missing_tasks}"
+            )
     
     print(f"Found {len(task_dirs)} task directories.")
     
@@ -234,6 +274,11 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
                 act_min = res['act_global_min'].copy()
                 act_max = res['act_global_max'].copy()
             else:
+                if act_min.shape != res['act_global_min'].shape:
+                    raise ValueError(
+                        f"Mixed action dimensions across tasks: {act_min.shape} versus "
+                        f"{res['act_global_min'].shape} ({task_name})"
+                    )
                 act_min = np.minimum(act_min, res['act_global_min'])
                 act_max = np.maximum(act_max, res['act_global_max'])
 
@@ -242,6 +287,11 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
                 state_min = res['state_global_min'].copy()
                 state_max = res['state_global_max'].copy()
             else:
+                if state_min.shape != res['state_global_min'].shape:
+                    raise ValueError(
+                        f"Mixed state dimensions across tasks: {state_min.shape} versus "
+                        f"{res['state_global_min'].shape} ({task_name})"
+                    )
                 state_min = np.minimum(state_min, res['state_global_min'])
                 state_max = np.maximum(state_max, res['state_global_max'])
 
@@ -276,6 +326,8 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
     elapsed_time = time.time() - start_time
 
     total_skipped = sum(res.get('skipped_outlier_count', 0) for res in task_results)
+    if act_min is None or state_min is None:
+        raise ValueError("No valid episodes for normalization; statistics were not written")
 
     # 4. Build the output dict
     stat_dict = {
@@ -321,7 +373,7 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
         with open(outlier_path, 'w', encoding='utf-8') as f:
             f.write(f"Outlier Report - Mode: {data_mode} - Total: {len(all_outliers)}\n")
             f.write("="*60 + "\n")
-            f.write(f"Threshold: Action joint dims exceed ±π ({np.pi:.4f})\n")
+            f.write("Threshold: 7D A3 actions use physical joint limits; 14D actions use ±π\n")
             f.write(f"Delete mode: {'ON' if delete_outliers else 'OFF'}\n\n")
             for item in all_outliers:
                 f.write(f"[{item[1]}] {item[0]} -> Dims: {item[2]}\n")
@@ -338,7 +390,7 @@ def collect_stats_multiprocess(root_dirs, output_path, outlier_path, num_process
     print(f"\n{'='*30} SUMMARY {'='*30}")
     print(f"Mode: {data_mode}")
     print(f"Processed {total_success}/{total_files} files in {elapsed_time:.2f}s")
-    print(f"Skipped {total_skipped} outlier files (action exceeds ±π)")
+    print(f"Skipped {total_skipped} outlier files (action exceeds schema-specific joint limits)")
     if delete_outliers and all_deleted:
         print(f"\033[91mDeleted {len(all_deleted)} files (hdf5 + json)\033[0m")
     print(f"Tasks: {len(per_task_stats)}")
@@ -409,8 +461,12 @@ def main():
                         choices=['clean', 'randomized', 'both'],
                         help='Data split to process: clean, randomized, or both')
     
-    parser.add_argument('--delete_outliers', action='store_true', default=True,
-                        help='Delete episode files whose action exceeds ±π (hdf5 + instruction json)')
+    parser.add_argument('--delete_outliers', action='store_true', default=False,
+                        help='Delete episode files whose action exceeds ±π (hdf5 + instruction json). '
+                             'Disabled by default; outliers are still excluded from statistics.')
+
+    parser.add_argument('--task_names', type=str, nargs='+', default=None,
+                        help='Optional allow-list of task directory names')
     
     args = parser.parse_args()
     
@@ -433,7 +489,8 @@ def main():
         args.outlier_path, 
         args.num_processes,
         data_mode=args.data_mode,
-        delete_outliers=args.delete_outliers
+        delete_outliers=args.delete_outliers,
+        task_names=args.task_names,
     )
 
 if __name__ == "__main__":

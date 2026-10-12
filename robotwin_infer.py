@@ -105,6 +105,7 @@ class RobotWinInference:
             num_dino_layers=num_dino_layers,
             task_cond_dim=self.task_cond_dim,
             patch_size=patch_size,
+            num_register_tokens=num_register_tokens,
         )
 
         ff_cfg = self.config.model.get('future_feat', {})
@@ -131,6 +132,7 @@ class RobotWinInference:
 
         self.model.eval()
         self.model.to(device, dtype)
+        self.model.action_model.keep_control_gates_fp32()
 
         # Processor
         indices_config = self.config.dataset.indices_config
@@ -138,6 +140,7 @@ class RobotWinInference:
             indices_config=indices_config,
             camera_name=list(self.config.dataset.camera_names)[0],
             image_size=self.image_size,
+            state_dim=int(self.config.common.state_dim),
             device=device,
             dtype=dtype,
         )
@@ -184,6 +187,36 @@ class RobotWinInference:
         qpos_cond = self.model.normalize_state(batch['state'])
         dino_features_list = self.model.get_vision_features(batch['pixel_values'])
 
+        # Predict causal future intent once per generated chunk, then reuse the
+        # same condition throughout all Euler integration steps. No future image
+        # is available or read during inference.
+        global_intent = None
+        if (self.model.action_model.use_global_intent
+                and self.model.action_model.inject_global_intent):
+            current_intent_features = self.model.get_current_intent_features(
+                dino_features_list
+            )
+            global_intent = self.model.action_model.predict_global_intent(
+                current_intent_features,
+                qpos_history=qpos_cond,
+                task_cond=self.task_cond,
+                horizon=self.model.action_model.intent_horizon,
+            )
+
+        spatial_intent = None
+        if (self.model.action_model.use_spatial_intent
+                and (self.model.action_model.inject_spatial_intent
+                     or self.model.action_model.inject_spatial_residual)):
+            current_spatial_features = self.model.get_current_spatial_features(
+                dino_features_list
+            )
+            spatial_intent = self.model.action_model.predict_spatial_intent(
+                current_spatial_features,
+                qpos_history=qpos_cond,
+                task_cond=self.task_cond,
+                horizon=self.model.action_model.intent_horizon,
+            )
+
         # 3. Flow Matching sampling preparation
         B = 1
         action_len = self.config.common.action_chunk_size
@@ -204,6 +237,8 @@ class RobotWinInference:
                 qpos_history=qpos_cond,
                 dino_features_list=dino_features_list,
                 task_cond=self.task_cond,
+                global_intent=global_intent,
+                spatial_intent=spatial_intent,
             )
 
             pred_v = preds["final_pred"]
@@ -252,6 +287,7 @@ class RobotWinInferenceProcessor:
         indices_config: Dict[str, List[int]] = None,
         camera_name: str = 'head_camera',
         image_size=(320, 240),    # (W, H)
+        state_dim: int = 16,
         device: str = "cuda",
         dtype: torch.dtype = torch.bfloat16,
     ):
@@ -259,6 +295,9 @@ class RobotWinInferenceProcessor:
         self.dtype = dtype
         self.camera_name = camera_name
         self.image_size = tuple(image_size)
+        self.state_dim = int(state_dim)
+        if self.state_dim not in (8, 16):
+            raise ValueError(f"unsupported state_dim: {self.state_dim}")
 
         self.state_indices = indices_config['state_indices']
         self.history_len = 1 + abs(min(self.state_indices))
@@ -278,13 +317,29 @@ class RobotWinInferenceProcessor:
             self.state_buffer.append(current_state)
 
     def _parse_state_from_obs(self, obs: Dict[str, Any]) -> np.ndarray:
-        """endpose -> 16-dim vector [left_pose(7), left_grip(1), right_pose(7), right_grip(1)]"""
+        """Assemble the configured 8D left-only or 16D two-arm state."""
         endpose = obs['endpose']
         l_pose = np.array(endpose['left_endpose'], dtype=np.float32)
         l_grip = np.array([endpose['left_gripper']], dtype=np.float32)
-        r_pose = np.array(endpose['right_endpose'], dtype=np.float32)
-        r_grip = np.array([endpose['right_gripper']], dtype=np.float32)
-        return np.concatenate([l_pose, l_grip, r_pose, r_grip], axis=0)
+        parts = [l_pose, l_grip]
+        if self.state_dim == 16:
+            r_pose = np.array(endpose['right_endpose'], dtype=np.float32)
+            r_grip = np.array([endpose['right_gripper']], dtype=np.float32)
+            parts.extend([r_pose, r_grip])
+        state = np.concatenate(parts, axis=0)
+        if state.shape != (self.state_dim,):
+            raise ValueError(f"expected {self.state_dim}D state, got {state.shape}")
+        return state
+
+    def prepare_rgb(self, image: np.ndarray) -> np.ndarray:
+        """Return the exact RGB pixels used before ImageNet normalization."""
+        import cv2
+        rgb = np.asarray(image)
+        if rgb.ndim != 3 or rgb.shape[2] != 3 or rgb.dtype != np.uint8:
+            raise ValueError(f"expected HxWx3 uint8 RGB image, got {rgb.shape}/{rgb.dtype}")
+        if (rgb.shape[1], rgb.shape[0]) != self.image_size:
+            rgb = cv2.resize(rgb, self.image_size, interpolation=cv2.INTER_LINEAR)
+        return rgb
 
     def process(self, observation: Dict[str, Any]) -> Dict[str, Any]:
         """Process an inference input; assumes update_state_buffer has been called"""
@@ -295,12 +350,8 @@ class RobotWinInferenceProcessor:
         # Image
         pixel_values = None
         if self.camera_name in observation['observation']:
-            import cv2
             img_np = observation['observation'][self.camera_name]['rgb']    # HxWx3 RGB uint8
-
-            # Resize to the target size (W, H)
-            if (img_np.shape[1], img_np.shape[0]) != self.image_size:
-                img_np = cv2.resize(img_np, self.image_size, interpolation=cv2.INTER_LINEAR)
+            img_np = self.prepare_rgb(img_np)
 
             normed = normalize_image_np(img_np)   # (3, H, W)
             pixel_values = torch.from_numpy(normed).to(self.device, self.dtype).unsqueeze(0)

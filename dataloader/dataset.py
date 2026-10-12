@@ -49,7 +49,8 @@ class RobotWinTaskDataset(data.Dataset):
                  indices_config=None, camera_names=None, image_size=(320, 240),
                  val=False, image_aug=False,
                  task_cond_dir=None,
-                 use_future_feat=False, future_frame_offset=None):
+                 use_future_feat=False, future_frame_offset=None,
+                 action_dim=14, state_dim=16, task_names=None):
         """
         RobotWin Dataset for DINOv3-based VLA (no language input).
 
@@ -67,6 +68,7 @@ class RobotWinTaskDataset(data.Dataset):
                              prediction training)
             future_frame_offset: offset of the future frame relative to the current
                                  anchor; None -> = chunk_size
+            task_names: optional allow-list of task directory names
         """
         if indices_config is None:
             raise ValueError("indices_config is required")
@@ -75,6 +77,9 @@ class RobotWinTaskDataset(data.Dataset):
 
         self.dataset_dirs = [Path(dataset_dir)] if isinstance(dataset_dir, str) else [Path(p) for p in dataset_dir]
         self.data_mode = data_mode
+        self.task_names = None if task_names is None else {str(v) for v in task_names}
+        if self.task_names is not None and not self.task_names:
+            raise ValueError("task_names must be null or a non-empty list")
         self.all_episodes = []
 
         # Future frame (future-feature prediction): offset defaults to chunk_size
@@ -86,6 +91,10 @@ class RobotWinTaskDataset(data.Dataset):
         self.chunk_size = len(self.action_offsets)
         self.indices_config = indices_config
         self.camera_names = camera_names
+        self.action_dim = int(action_dim)
+        self.state_dim = int(state_dim)
+        if (self.action_dim, self.state_dim) not in {(14, 16), (7, 8)}:
+            raise ValueError("supported action/state dimensions are (14,16) or (7,8)")
         # image_size: (W, H)
         self.image_size = tuple(image_size)
         assert self.image_size[0] % 16 == 0 and self.image_size[1] % 16 == 0, \
@@ -133,7 +142,25 @@ class RobotWinTaskDataset(data.Dataset):
         for ep_info in tqdm(self.all_episodes, desc="Scanning episode lengths"):
             path = ep_info['hdf5_path']
             with h5py.File(path, 'r') as f:
-                length = f['joint_action']['vector'].shape[0]
+                actions = f['joint_action']['vector']
+                length = actions.shape[0]
+                if actions.ndim != 2 or actions.shape[1] != self.action_dim:
+                    raise ValueError(
+                        f"{path}: expected action [T,{self.action_dim}], got {actions.shape}; "
+                        "do not mix padded and native single-arm episodes"
+                    )
+                required = ['endpose/left_endpose', 'endpose/left_gripper']
+                if self.state_dim == 16:
+                    required.extend(['endpose/right_endpose', 'endpose/right_gripper'])
+                for key in required:
+                    if key not in f or f[key].shape[0] != length:
+                        raise ValueError(f"{path}: missing or length-mismatched {key}")
+                if self.state_dim == 8 and (
+                    'endpose/right_endpose' in f or 'endpose/right_gripper' in f
+                ):
+                    raise ValueError(f"{path}: native 8D state must not have right-arm fields")
+                if any(cam not in f['observation'] for cam in self.camera_names):
+                    raise ValueError(f"{path}: missing one of configured cameras {self.camera_names}")
 
             if length < 2:
                 continue
@@ -203,11 +230,22 @@ class RobotWinTaskDataset(data.Dataset):
             if not root_dir.exists():
                 continue
             for task_dir in [d for d in root_dir.iterdir() if d.is_dir()]:
+                if self.task_names is not None and task_dir.name not in self.task_names:
+                    continue
                 for split in data_splits:
                     split_path = task_dir / split
                     if split_path.exists():
                         episodes = self._scan_task_folder(split_path, split)
                         self.all_episodes.extend(episodes)
+
+        if self.task_names is not None:
+            found_tasks = {ep['task_name'] for ep in self.all_episodes}
+            missing_tasks = sorted(self.task_names - found_tasks)
+            if missing_tasks:
+                raise ValueError(
+                    "Configured task_names have no episodes in the selected split: "
+                    f"{missing_tasks}. Checked roots={self.dataset_dirs}, data_mode={self.data_mode}"
+                )
 
         if not self.all_episodes:
             raise ValueError(f"No valid episodes found in: {self.dataset_dirs}")
@@ -251,13 +289,16 @@ class RobotWinTaskDataset(data.Dataset):
             h5_idx = np.unique(t_idx)
             l_pose = root['endpose']['left_endpose'][h5_idx]
             l_grip = root['endpose']['left_gripper'][h5_idx]
-            r_pose = root['endpose']['right_endpose'][h5_idx]
-            r_grip = root['endpose']['right_gripper'][h5_idx]
             if l_grip.ndim == 1:
                 l_grip = l_grip[:, None]
-            if r_grip.ndim == 1:
-                r_grip = r_grip[:, None]
-            state_data = np.concatenate([l_pose, l_grip, r_pose, r_grip], axis=1)
+            parts = [l_pose, l_grip]
+            if self.state_dim == 16:
+                r_pose = root['endpose']['right_endpose'][h5_idx]
+                r_grip = root['endpose']['right_gripper'][h5_idx]
+                if r_grip.ndim == 1:
+                    r_grip = r_grip[:, None]
+                parts.extend([r_pose, r_grip])
+            state_data = np.concatenate(parts, axis=1)
             data_batch['state'] = torch.from_numpy(state_data[np.searchsorted(h5_idx, t_idx)]).float()
 
             # Cameras
@@ -390,9 +431,14 @@ def create_dataset(config: Any, val: bool = False):
         if task_cond_dir is None:
             raise ValueError("model.use_task_cond=True but dataset.task_cond_dir is not set")
 
-    # Future feature prediction (optional): whether to fetch a future frame
+    # A future frame is needed by either dense future-feature supervision or
+    # causal intent supervision. It is a training target only.
     ff_cfg = config.model.get('future_feat', {})
-    use_future_feat = ff_cfg.get('enabled', False) if ff_cfg else False
+    intent_cfg = config.model.get('global_intent', {})
+    use_future_feat = (
+        (ff_cfg.get('enabled', False) if ff_cfg else False)
+        or (intent_cfg.get('enabled', False) if intent_cfg else False)
+    )
     future_frame_offset = config.dataset.get('future_frame_offset', None)
 
     params = {
@@ -406,6 +452,9 @@ def create_dataset(config: Any, val: bool = False):
         'task_cond_dir': task_cond_dir,
         'use_future_feat': use_future_feat,
         'future_frame_offset': future_frame_offset,
+        'action_dim': int(config.common.action_dim),
+        'state_dim': int(config.common.state_dim),
+        'task_names': config.dataset.get('task_names', None),
     }
 
     return RobotWinTaskDataset(**params)

@@ -1,0 +1,12 @@
+# Direct --config entry for continuous master-to-follower gripper following.
+# Hardware, cameras, safety, and dataset settings are inherited from the
+# canonical config.master_slave.yaml next to this file.
+base_config: config.master_slave.yaml
+master_gripper_control:
+  enabled: true
+  mapping_mode: linear
+  activation_open_norm: 0.10
+  # 主臂输入 0%~50% 线性映射为从臂 0%~80%；超过 50% 饱和为从臂全开(80%)。
+  input_full_open_norm: 0.50
+  # 从臂最大归一化开度（0.80 = 只开到满行程的 80%）。
+  output_full_open_norm: 0.80

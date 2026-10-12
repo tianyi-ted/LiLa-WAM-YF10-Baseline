@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+
+# Local datasets, pretrained weights, and generated experiment artifacts
+data/
+embeddings/
+pretrained/
+artifacts/
+checkpoints_vla/
+eval_result/
+logs/
+
+# Real-robot recordings, camera snapshots, and inference diagnostics.
+# Keep source/config/docs in robot/ visible without accidentally staging GBs.
+/robot/edulite_a3_collect/collected_data/
+/robot/edulite_a3_collect/collected_data_single/
+/robot/edulite_a3_collect/camera_snapshots/
+/robot/edulite_a3_vla/inference_outputs/
+/robot/edulite_a3_vla/inference_outputs_single/

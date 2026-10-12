@@ -59,7 +59,7 @@ class ModelFactory:
 
     @staticmethod
     def create_action_model(config, dino_hidden_size, num_dino_layers, task_cond_dim=None,
-                            patch_size=16):
+                            patch_size=16, num_register_tokens=0):
         """create VLAModel"""
         logger.info("Initializing VLAModel...")
 
@@ -85,6 +85,41 @@ class ModelFactory:
         future_feat_depth = ff_cfg['num_decoder_layers']
         future_feat_heads = ff_cfg['num_heads']
 
+        # ---- Causal global intent prediction ----
+        intent_cfg = model_cfg.get('global_intent', {})
+        use_global_intent = bool(intent_cfg.get('enabled', False)) if intent_cfg else False
+        inject_global_intent = bool(intent_cfg.get('inject_into_dit', False)) if intent_cfg else False
+        intent_horizon = config.dataset.get('future_frame_offset', None)
+        if intent_horizon is None:
+            intent_horizon = config.common.action_chunk_size
+        if inject_global_intent and not use_global_intent:
+            raise ValueError("global_intent.inject_into_dit=True requires global_intent.enabled=True")
+        if use_global_intent:
+            logger.info(
+                f"Global Intent ENABLED: inject_into_dit={inject_global_intent}, "
+                f"horizon={intent_horizon}, feature_dim={dino_hidden_size}, "
+                f"gate_init={intent_cfg.get('gate_init', 0.0)}, "
+                f"gate_trainable={intent_cfg.get('gate_trainable', True)}"
+            )
+
+        # ---- Fixed spatial interaction intent ----
+        spatial_cfg = model_cfg.get('spatial_intent', {})
+        use_spatial_intent = bool(spatial_cfg.get('enabled', False)) if spatial_cfg else False
+        inject_spatial_intent = bool(spatial_cfg.get('inject_into_dit', False)) if spatial_cfg else False
+        inject_spatial_residual = bool(spatial_cfg.get('inject_as_residual', False)) if spatial_cfg else False
+        spatial_residual_injection = spatial_cfg.get('residual_injection', 'before_fusion') if spatial_cfg else 'before_fusion'
+        if inject_spatial_intent and not use_spatial_intent:
+            raise ValueError("spatial_intent.inject_into_dit=True requires spatial_intent.enabled=True")
+        region_grid = tuple(spatial_cfg.get('region_grid', [2, 4])) if spatial_cfg else (2, 4)
+        if use_spatial_intent:
+            logger.info(
+                f"Spatial Intent ENABLED: inject_into_dit={inject_spatial_intent}, "
+                f"inject_as_residual={inject_spatial_residual}, "
+                f"residual_injection={spatial_residual_injection}, "
+                f"region_grid={region_grid}, gate_init={spatial_cfg.get('gate_init', 0.1)}, "
+                f"gate_trainable={spatial_cfg.get('gate_trainable', True)}"
+            )
+
         # Future-frame patch token count (number of queries for dense prediction); image_size=(W,H)
         img_w, img_h = tuple(config.dataset.image_size)
         num_patches = (img_h // patch_size) * (img_w // patch_size)
@@ -93,6 +128,9 @@ class ModelFactory:
         if use_future_feat:
             logger.info(f"Future-Feat Prediction ENABLED: "
                         f"num_queries(num_patches)={num_patches}, out_dim={dino_hidden_size}")
+        future_target_layer = ff_cfg.get('target_layer', -2)
+        feat_layers = list(ve_cfg.get('feat_layers', []))
+        spatial_layer_idx = feat_layers.index(future_target_layer) if future_target_layer in feat_layers else -1
 
         model = VLAModel(
             action_dim=config.common.action_dim,
@@ -117,6 +155,27 @@ class ModelFactory:
             future_feat_out_dim=dino_hidden_size,
             future_feat_depth=future_feat_depth,
             future_feat_heads=future_feat_heads,
+            use_global_intent=use_global_intent,
+            inject_global_intent=inject_global_intent,
+            intent_horizon=intent_horizon,
+            intent_hidden_dim=intent_cfg.get('hidden_size', ae_cfg.hidden_size) if intent_cfg else ae_cfg.hidden_size,
+            intent_horizon_dim=intent_cfg.get('horizon_embed_dim', 32) if intent_cfg else 32,
+            intent_feat_dim=dino_hidden_size,
+            intent_gate_init=intent_cfg.get('gate_init', 0.0) if intent_cfg else 0.0,
+            intent_gate_trainable=intent_cfg.get('gate_trainable', True) if intent_cfg else True,
+            use_spatial_intent=use_spatial_intent,
+            inject_spatial_intent=inject_spatial_intent,
+            inject_spatial_residual=inject_spatial_residual,
+            spatial_grid_size=(img_h // patch_size, img_w // patch_size),
+            spatial_region_grid=region_grid,
+            spatial_hidden_dim=spatial_cfg.get('hidden_size', 256) if spatial_cfg else 256,
+            spatial_horizon_dim=spatial_cfg.get('horizon_embed_dim', 32) if spatial_cfg else 32,
+            spatial_gate_init=spatial_cfg.get('gate_init', 0.1) if spatial_cfg else 0.1,
+            spatial_gate_trainable=spatial_cfg.get('gate_trainable', True) if spatial_cfg else True,
+            spatial_residual_layer_idx=spatial_layer_idx,
+            spatial_residual_prefix_tokens=(1 + num_register_tokens),
+            spatial_residual_scale=spatial_cfg.get('residual_scale', 1.0) if spatial_cfg else 1.0,
+            spatial_residual_injection=spatial_residual_injection,
         )
         return model
 
@@ -163,6 +222,14 @@ class VLAWrapper(nn.Module):
             self.vel_weight_sigma = train_config['vel_weight_sigma']
             self.use_future_feat = train_config.get('use_future_feat', False)
             self.lambda_future_feat = train_config.get('lambda_future_feat', 0.0)
+            self.use_global_intent = train_config.get('use_global_intent', False)
+            self.lambda_intent = train_config.get('lambda_intent', 0.0)
+            self.intent_cosine_weight = train_config.get('intent_cosine_weight', 0.0)
+            self.intent_cosine_eps = train_config.get('intent_cosine_eps', 1.0e-4)
+            self.intent_horizon = train_config.get('intent_horizon', action_model.intent_horizon)
+            self.use_spatial_intent = train_config.get('use_spatial_intent', False)
+            self.lambda_spatial_intent = train_config.get('lambda_spatial_intent', 0.0)
+            self.spatial_horizon = train_config.get('spatial_horizon', action_model.intent_horizon)
         else:
             # Inference-mode defaults
             self.time_mu = 0.0
@@ -172,6 +239,14 @@ class VLAWrapper(nn.Module):
             self.vel_weight_sigma = 0.01
             self.use_future_feat = False
             self.lambda_future_feat = 0.0
+            self.use_global_intent = action_model.use_global_intent
+            self.lambda_intent = 0.0
+            self.intent_cosine_weight = 0.0
+            self.intent_cosine_eps = 1.0e-4
+            self.intent_horizon = action_model.intent_horizon
+            self.use_spatial_intent = action_model.use_spatial_intent
+            self.lambda_spatial_intent = 0.0
+            self.spatial_horizon = action_model.intent_horizon
 
         logger.info(f"VLAWrapper initialized. feat_layers={self.feat_layers}, "
                     f"include_cls_register={self.include_cls_register}")
@@ -191,12 +266,24 @@ class VLAWrapper(nn.Module):
 
         act_min = torch.tensor(action_stats['min'], dtype=torch.float32)
         act_max = torch.tensor(action_stats['max'], dtype=torch.float32)
+        expected_action = self.action_model.action_proj.in_features
+        if act_min.shape != (expected_action,) or act_max.shape != (expected_action,):
+            raise ValueError(
+                f"Action normalization stats must be {expected_action}D, "
+                f"got {tuple(act_min.shape)}/{tuple(act_max.shape)}"
+            )
         self.register_buffer('action_min', act_min)
         self.register_buffer('action_max', act_max)
         logger.info(f"Loaded Action stats - Dim: {len(action_stats['min'])}")
 
         state_min = torch.tensor(state_stats['min'], dtype=torch.float32)
         state_max = torch.tensor(state_stats['max'], dtype=torch.float32)
+        expected_state = self.action_model.proprio_proj.in_features
+        if state_min.shape != (expected_state,) or state_max.shape != (expected_state,):
+            raise ValueError(
+                f"State normalization stats must be {expected_state}D, "
+                f"got {tuple(state_min.shape)}/{tuple(state_max.shape)}"
+            )
         self.register_buffer('state_min', state_min)
         self.register_buffer('state_max', state_max)
         logger.info(f"Loaded State stats - Dim: {len(state_stats['min'])}")
@@ -258,6 +345,23 @@ class VLAWrapper(nn.Module):
         h = h[:, skip:, :]                                          # (B, P, D) patch tokens only
         return h
 
+    def get_current_intent_features(self, dino_features_list):
+        """Return current-frame patch tokens from the same layer as the intent target."""
+        if self.future_feat_target_layer not in self.feat_layers:
+            raise ValueError(
+                f"Global intent target_layer={self.future_feat_target_layer} must also appear "
+                f"in vision_encoder.feat_layers={self.feat_layers} to reuse the current DINO forward"
+            )
+        layer_pos = self.feat_layers.index(self.future_feat_target_layer)
+        h = dino_features_list[layer_pos]
+        if self.include_cls_register:
+            h = h[:, 1 + self.num_register_tokens:, :]
+        return h
+
+    def get_current_spatial_features(self, dino_features_list):
+        """Return current patch tokens used by the fixed spatial target."""
+        return self.get_current_intent_features(dino_features_list)
+
     def _normalize_tensor(self, x, min_val, max_val):
         min_v = min_val.to(device=x.device, dtype=x.dtype)
         max_v = max_val.to(device=x.device, dtype=x.dtype)
@@ -310,8 +414,20 @@ class VLAWrapper(nn.Module):
 
         # 4b. Future feature target (future-frame patch features from the frozen DINO)
         future_feat_target = None
-        if self.use_future_feat and batch.get('future_pixel_values') is not None:
+        if (self.use_future_feat or self.use_global_intent) and batch.get('future_pixel_values') is not None:
             future_feat_target = self.get_future_target_features(batch['future_pixel_values'])
+
+        current_intent_features = None
+        if self.use_global_intent:
+            current_intent_features = self.get_current_intent_features(dino_features_list)
+            if future_feat_target is None:
+                raise ValueError("Global intent training requires future_pixel_values")
+
+        current_spatial_features = None
+        if self.use_spatial_intent:
+            current_spatial_features = self.get_current_spatial_features(dino_features_list)
+            if future_feat_target is None:
+                raise ValueError("Spatial intent training requires future_pixel_values")
 
         # 5. Flow Matching Loss
         loss, info_dic = calc_flow_matching_loss(
@@ -329,6 +445,18 @@ class VLAWrapper(nn.Module):
             future_feat_target=future_feat_target,
             use_future_feat=self.use_future_feat,
             lambda_future_feat=self.lambda_future_feat,
+            current_intent_features=current_intent_features,
+            intent_target_features=future_feat_target,
+            use_global_intent=self.use_global_intent,
+            lambda_intent=self.lambda_intent,
+            intent_cosine_weight=self.intent_cosine_weight,
+            intent_cosine_eps=self.intent_cosine_eps,
+            intent_horizon=self.intent_horizon,
+            current_spatial_features=current_spatial_features,
+            spatial_target_features=future_feat_target,
+            use_spatial_intent=self.use_spatial_intent,
+            lambda_spatial_intent=self.lambda_spatial_intent,
+            spatial_horizon=self.spatial_horizon,
         )
 
         return loss, info_dic

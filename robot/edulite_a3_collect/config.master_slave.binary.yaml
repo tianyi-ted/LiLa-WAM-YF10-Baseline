@@ -1,0 +1,10 @@
+# Direct --config entry for two-state master-to-follower gripper control.
+# Hardware, cameras, safety, and dataset settings are inherited from the
+# canonical config.master_slave.yaml next to this file.
+base_config: config.master_slave.yaml
+master_gripper_control:
+  enabled: true
+  mapping_mode: binary
+  activation_open_norm: 0.40
+  binary_confirm_samples: 3
+  binary_open_target_norm: 0.80
