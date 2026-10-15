@@ -184,6 +184,9 @@ def main() -> int:
     rate_hz = float(collection.get("rate_hz", 30.0))
     if rate_hz <= 0:
         raise ValueError("collection.rate_hz must be positive")
+    recording_warmup_s = float(collection.get("recording_warmup_s", 0.0))
+    if recording_warmup_s < 0:
+        raise ValueError("collection.recording_warmup_s must be non-negative")
     min_frames = int(collection.get("min_frames", 40))
     camera_max_age = float(collection.get("camera_max_age_s", 0.25))
     gripper_step = float(collection.get("gripper_step", 0.05))
@@ -226,6 +229,7 @@ def main() -> int:
     armed = False
     stop_requested = False
     auto_start = None
+    recording_started_at = None
     pending_start_deadline: float | None = None
     pending_countdown_second: int | None = None
 
@@ -234,13 +238,20 @@ def main() -> int:
         stop_requested = True
 
     def begin_teleop_recording() -> None:
-        nonlocal recording, deadline
+        nonlocal recording, deadline, recording_started_at
         if mode == "master_slave_single":
             rig.start_teleoperation()
         buffer.clear()
         recording = True
-        deadline = time.monotonic()
-        print("TELEOP + RECORDING")
+        recording_started_at = time.monotonic()
+        deadline = recording_started_at + recording_warmup_s
+        if recording_warmup_s > 0:
+            print(
+                f"TELEOP + RECORDING (discarding first {recording_warmup_s:.3f}s "
+                "of samples)",
+            )
+        else:
+            print("TELEOP + RECORDING")
 
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
@@ -258,10 +269,14 @@ def main() -> int:
             if mode == "master_slave_single":
                 rig.start_teleoperation()
             recording = True
-            auto_start = time.monotonic()
+            recording_started_at = time.monotonic()
+            # Dry-run duration measures retained episode time, excluding warmup.
+            auto_start = recording_started_at + recording_warmup_s
+            deadline = recording_started_at + recording_warmup_s
             print(f"Dry-run auto recording for {args.auto_seconds:.2f}s...")
 
-        deadline = time.monotonic()
+        if not recording:
+            deadline = time.monotonic()
         with raw_terminal(sys.stdin.isatty() and args.auto_seconds is None):
             while not stop_requested:
                 if armed:

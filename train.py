@@ -402,6 +402,13 @@ if __name__ == "__main__":
 
     for epoch in range(start_epoch, epochs):
         model.train()
+        if action_model.use_spatial_intent and action_model.inject_spatial_residual:
+            action_model.set_spatial_schedule(epoch + 1)
+            logger.info(
+                f"Spatial residual schedule: epoch={epoch + 1}, "
+                f"scale={action_model.spatial_schedule_scale:.3f}, "
+                f"effective_gate={action_model.effective_spatial_gate().item():.6f}"
+            )
         epoch_loss = 0.0
         optimizer.zero_grad()
         start_time = time.time()

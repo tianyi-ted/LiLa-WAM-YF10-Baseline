@@ -48,7 +48,7 @@ model:
     region_grid: [2, 4]
     hidden_size: 256
     horizon_embed_dim: 32
-    gate_init: 0.1
+    gate_init: 0.0
     gate_trainable: true
     residual_scale: 1.0
   action_expert:

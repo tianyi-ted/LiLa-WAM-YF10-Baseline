@@ -176,6 +176,9 @@ class ModelFactory:
             spatial_residual_prefix_tokens=(1 + num_register_tokens),
             spatial_residual_scale=spatial_cfg.get('residual_scale', 1.0) if spatial_cfg else 1.0,
             spatial_residual_injection=spatial_residual_injection,
+            spatial_max_gate=spatial_cfg.get('max_gate', None) if spatial_cfg else None,
+            spatial_warmup_epochs=spatial_cfg.get('warmup_epochs', 0) if spatial_cfg else 0,
+            spatial_ramp_epochs=spatial_cfg.get('ramp_epochs', 0) if spatial_cfg else 0,
         )
         return model
 

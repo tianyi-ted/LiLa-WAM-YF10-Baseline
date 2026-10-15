@@ -1,0 +1,91 @@
+# S-residual v2: inject the spatial residual after multi-layer DINO fusion.
+# Train from scratch with the same 50-epoch schedule as the baseline.
+common:
+  action_dim: 14
+  state_dim: 16
+  action_chunk_size: 32
+  proprio_len: 1
+  num_inference_steps: 10
+  action_execution_horizon: 16
+
+dataset:
+  type: "robotwin"
+  dataset_dir: "/home/lab347-no10/Tianyi/LiLa-WAM/data/yf10"
+  data_mode: "both"
+  camera_names: ["head_camera"]
+  image_size: [320, 240]
+  task_cond_dir: "/home/lab347-no10/Tianyi/LiLa-WAM/embeddings/yf10_vtt_dinov3b"
+  image_aug: false
+  future_frame_offset: 32
+  indices_config:
+    state_indices: [0]
+    camera_indices: [0]
+    action_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+      16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+
+model:
+  num_registers: 2
+  use_task_cond: true
+  vision_encoder:
+    checkpoint_path: "/home/lab347-no10/Tianyi/LiLa-WAM/pretrained/dinov3-vitb16"
+    feat_layers: [-7, -4, -2]
+    include_cls_register: true
+    fusion_mode: "concat"
+    concat:
+      proj_type: "linear"
+      pre_norm: true
+      out_dim: null
+  future_feat:
+    enabled: true
+    target_layer: -2
+    num_decoder_layers: 4
+    num_heads: 4
+  spatial_intent:
+    enabled: true
+    inject_into_dit: false
+    inject_as_residual: true
+    residual_injection: "after_fusion"
+    region_grid: [2, 4]
+    hidden_size: 256
+    horizon_embed_dim: 32
+    gate_init: 0.0
+    gate_trainable: true
+    residual_scale: 1.0
+    max_gate: 0.1
+    warmup_epochs: 5
+    ramp_epochs: 10
+  action_expert:
+    depth: 12
+    hidden_size: 512
+    num_heads: 8
+    vlm_adapter_num_queries: 64
+    adapter_depth: 4
+
+training:
+  seed: 0
+  deterministic: false
+  batch_size: 96
+  grad_accum_steps: 1
+  time_sampler: "logit_normal"
+  time_mu: 0.0
+  time_sigma: 1.0
+  learning_rate: 2.0e-4
+  lr_min: 5.0e-5
+  weight_decay: 1.0e-2
+  betas: [0.9, 0.99]
+  grad_clip_norm: 1.0
+  epochs: 50
+  save_interval_epoch: 1
+  lambda_future_feat: 0.5
+  lambda_spatial_intent: 0.1
+  use_vel_weight: false
+  vel_weight_alpha: 0.2
+  vel_weight_sigma: 0.01
+
+inference:
+  smooth_actions: true
+  smooth_sigma: 1.0
+
+system:
+  num_workers: 4
+  pin_memory: true

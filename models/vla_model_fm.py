@@ -444,6 +444,9 @@ class VLAModel(nn.Module):
                  spatial_residual_prefix_tokens=0,
                  spatial_residual_scale=1.0,
                  spatial_residual_injection="before_fusion",
+                 spatial_max_gate=None,
+                 spatial_warmup_epochs=0,
+                 spatial_ramp_epochs=0,
                  ):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -549,6 +552,12 @@ class VLAModel(nn.Module):
         self.spatial_region_grid = tuple(spatial_region_grid)
         self.num_spatial_regions = int(self.spatial_region_grid[0] * self.spatial_region_grid[1])
         self.spatial_gate_init = float(spatial_gate_init)
+        self.spatial_max_gate = None if spatial_max_gate is None else float(spatial_max_gate)
+        self.spatial_schedule_scale = 1.0
+        self.spatial_warmup_epochs = int(spatial_warmup_epochs)
+        self.spatial_ramp_epochs = int(spatial_ramp_epochs)
+        if self.spatial_max_gate is not None and not (0 < self.spatial_max_gate <= 1):
+            raise ValueError("spatial_max_gate must be in (0, 1]")
         self.spatial_gate_trainable = bool(spatial_gate_trainable)
         self.spatial_residual_layer_idx = int(spatial_residual_layer_idx)
         self.spatial_residual_prefix_tokens = int(spatial_residual_prefix_tokens)
@@ -577,8 +586,11 @@ class VLAModel(nn.Module):
             nn.init.normal_(self.type_emb_spatial, std=0.02)
             if not (-0.999 <= self.spatial_gate_init <= 0.999):
                 raise ValueError("spatial_gate_init must be in [-0.999, 0.999]")
+            gate_ratio = self.spatial_gate_init if self.spatial_max_gate is None else min(
+                0.999, self.spatial_gate_init / self.spatial_max_gate
+            )
             self.spatial_gate = nn.Parameter(
-                torch.tensor(math.atanh(self.spatial_gate_init), dtype=torch.float32),
+                torch.tensor(math.atanh(gate_ratio), dtype=torch.float32),
                 requires_grad=self.spatial_gate_trainable,
             )
 
@@ -648,6 +660,26 @@ class VLAModel(nn.Module):
             if isinstance(gate, nn.Parameter):
                 gate.data = gate.data.float()
         return self
+
+    def effective_spatial_gate(self):
+        gate = torch.tanh(self.spatial_gate)
+        if self.spatial_max_gate is not None:
+            gate = gate * self.spatial_max_gate
+        return gate * self.spatial_schedule_scale
+
+    def set_spatial_schedule(self, epoch_number):
+        if self.spatial_warmup_epochs <= 0:
+            self.spatial_schedule_scale = 1.0
+        elif epoch_number <= self.spatial_warmup_epochs:
+            self.spatial_schedule_scale = 0.0
+        elif self.spatial_ramp_epochs <= 0:
+            self.spatial_schedule_scale = 1.0
+        else:
+            self.spatial_schedule_scale = min(
+                1.0,
+                float(epoch_number - self.spatial_warmup_epochs)
+                / float(self.spatial_ramp_epochs),
+            )
 
     def predict_global_intent(self, current_patch_features, qpos_history,
                               task_cond=None, horizon=None):
@@ -729,7 +761,7 @@ class VLAModel(nn.Module):
             region_map, size=(h, w), mode="bilinear", align_corners=False
         ).flatten(2).transpose(1, 2)
         patch_delta = patch_delta * (
-            torch.tanh(self.spatial_gate).to(patch_delta.dtype)
+            self.effective_spatial_gate().to(patch_delta.dtype)
             * self.spatial_residual_scale
         )
         features = list(dino_features_list)
@@ -771,7 +803,7 @@ class VLAModel(nn.Module):
             region_map, size=(h, w), mode="bilinear", align_corners=False
         ).flatten(2).transpose(1, 2)
         patch_delta = patch_delta * (
-            torch.tanh(self.spatial_gate).to(patch_delta.dtype)
+            self.effective_spatial_gate().to(patch_delta.dtype)
             * self.spatial_residual_scale
         )
         updated = fused_features.clone()
@@ -839,7 +871,7 @@ class VLAModel(nn.Module):
             if spatial_intent is None:
                 raise ValueError("inject_spatial_intent=True but spatial_intent was not provided")
             spatial_tokens = self.spatial_to_tokens(spatial_intent)
-            spatial_tokens = torch.tanh(self.spatial_gate).to(spatial_intent.dtype) * (
+            self.effective_spatial_gate().to(spatial_intent.dtype) * (
                 spatial_tokens + self.type_emb_spatial
             )
             tokens_list.append(spatial_tokens)
@@ -1066,7 +1098,7 @@ def calc_flow_matching_loss(
     info.update(intent_info)
     info["loss_spatial_intent"] = loss_spatial_intent.item()
     info["spatial_gate"] = (
-        torch.tanh(model.spatial_gate).detach().item()
+        model.effective_spatial_gate().detach().item()
         if use_spatial_intent else 0.0
     )
     info.update(spatial_info)

@@ -16,6 +16,9 @@ collection:
   split: demo_clean
   rate_hz: 30
   min_frames: 40
+  # Let the master/slave gripper activation transient settle before retaining
+  # the first episode sample.
+  recording_warmup_s: 0.20
   jpeg_quality: 95
   camera_max_age_s: 0.25
   # 每次 [ / ] 改变总夹爪行程的 2%（约 1.8° 电机角）。

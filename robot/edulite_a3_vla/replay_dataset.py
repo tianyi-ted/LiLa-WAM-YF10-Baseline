@@ -165,6 +165,13 @@ def replay(action: np.ndarray, arm, config: dict, speed: float, max_seconds: flo
     current_grip = calibration.normalize(float(actual[6]))
     last_target = actual[:6].copy()
     force_cfg = config.get("gripper_control", {}).get("force_stop", {})
+    reopen_margin = float(
+        config.get("master_gripper_control", {}).get(
+            "reopen_latch_margin_norm", 0.05
+        )
+    )
+    if reopen_margin <= 0:
+        raise ValueError("master_gripper_control.reopen_latch_margin_norm must be positive")
     hard_torque = float(force_cfg.get("hard_torque_limit_nm", 0.18))
     force_stop = bool(force_cfg.get("enabled", True))
     grip_latched = False
@@ -204,6 +211,15 @@ def replay(action: np.ndarray, arm, config: dict, speed: float, max_seconds: flo
             desired_grip = float(np.clip(sample[6], 0.0, 1.0))
             feedback = _feedback(arm, "replay arm", 0.25)
             current_grip = calibration.normalize(float(feedback[6]))
+            if grip_latched and desired_grip >= current_grip + reopen_margin:
+                grip_latched = False
+                torque_ema = 0.0
+                stall_since = None
+                print(
+                    f"REPLAY GRIPPER FORCE LATCH CLEARED at frame {index}: "
+                    f"target={desired_grip:.3f}, current={current_grip:.3f}",
+                    flush=True,
+                )
             if force_stop and desired_grip < current_grip - 0.015 and not grip_latched:
                 effort = abs(float(arm.GetArmJointEfforts().joint_7))
                 torque_ema = ema_alpha * effort + (1.0 - ema_alpha) * torque_ema

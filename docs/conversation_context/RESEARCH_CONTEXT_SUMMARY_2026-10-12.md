@@ -618,3 +618,177 @@ done
 eval_result/yf10/运行ID/summary.json
 ~~~
 
+## 17. 2026-10-13 之后的最新结果
+
+### 17.1 S-residual v2 微调版
+
+配置：
+
+~~~text
+configs/yf10_dinov3b_h512_spatial_sres_v2_c32_ft4.yaml
+~~~
+
+gate float32 修复后的 checkpoint：
+
+~~~text
+checkpoints_vla/yf10_phase4_spatial_sres_v2_ft4_fp32gate/sft_2026-10-11_13-44-31/checkpoint_epoch_4.pt
+~~~
+
+测试结果：
+
+~~~text
+clean:       386/500 = 77.2%
+randomized:  319/500 = 63.8%
+overall:     705/1000 = 70.5%
+~~~
+
+相比 C32 的69.1%，总体提升1.4个百分点；clean提升明显，randomized提升较小。训练结束时 gate 从约0.099765下降到约0.063，说明 gate 已经可以正常更新。
+
+### 17.2 S-residual v2 scratch epoch40
+
+配置：
+
+~~~text
+configs/yf10_dinov3b_h512_spatial_sres_v2_c32_scratch50.yaml
+~~~
+
+测试结果：
+
+~~~text
+clean:       354/500 = 70.8%
+randomized:  301/500 = 60.2%
+overall:     655/1000 = 65.5%
+~~~
+
+该结果低于原始 baseline epoch40和C32。epoch40 checkpoint中的有效 gate约为0.236，说明从随机初始化训练时空间残差过早或过强地干扰了动作策略。不能把微调4轮的70.5%直接解释为S-residual结构在scratch条件下有效。
+
+## 18. Gate实现的精确定义
+
+当前代码中有三个不同量：
+
+1. raw learnable gate：模型中被优化器更新的 float32 参数 spatial_gate；
+2. tanh raw gate：tanh(spatial_gate)，范围约为[-1,1]；
+3. effective gate：真正乘到空间残差上的系数。
+
+v3配置下有效gate为：
+
+~~~text
+effective_gate = max_gate × tanh(raw_gate) × schedule(epoch)
+~~~
+
+实际注入为：
+
+~~~text
+fused_visual += effective_gate × residual_scale × spatial_residual
+~~~
+
+max_gate用于限制有效残差强度，不代表 raw gate 的上限。warmup_epochs控制前期完全关闭残差，ramp_epochs控制残差从0逐渐增加到完整强度所需要的epoch数。
+
+当 max_gate=0.1、gate_init=0.0 时，raw gate从0开始学习；warmup结束后不会自动跳到0.1。gate_init是初始化目标，schedule另外控制实际注入时间。
+
+当 gate_init=max_gate=0.1 时，gate_ratio接近1，raw gate会接近atanh(0.999)，处于tanh饱和区。因此四轮v3微调配置已改为 gate_init=0.05、max_gate=0.1；scratch50配置保留 gate_init=0.0、max_gate=0.1。
+
+## 19. v3 Warm-up 配置
+
+新增配置：
+
+~~~text
+configs/yf10_dinov3b_h512_spatial_sres_v3_warmup_ft4.yaml
+configs/yf10_dinov3b_h512_spatial_sres_v3_warmup_scratch50.yaml
+~~~
+
+scratch50配置：
+
+~~~yaml
+gate_init: 0.0
+max_gate: 0.1
+warmup_epochs: 5
+ramp_epochs: 10
+~~~
+
+训练过程：
+
+~~~text
+epoch 1～5：残差完全关闭，但空间预测器可通过spatial loss训练
+epoch 6～15：残差注入从0逐渐增加
+epoch 16以后：effective gate不超过0.1
+~~~
+
+ft4配置：
+
+~~~yaml
+gate_init: 0.05
+max_gate: 0.1
+warmup_epochs: 1
+ramp_epochs: 2
+~~~
+
+四轮配置不能把 warmup 设置过长，否则整个实验结束时残差还没有真正参与动作生成。
+
+## 20. 当前正确的实验诊断顺序
+
+当前不能直接跳到 region gate 或 interaction query，应按下面顺序执行。
+
+### 20.1 Residual-off 推理消融
+
+使用同一个 v2/v3 epoch40 checkpoint，把测试配置中的 residual_scale 设为0，只重新推理，不重新训练。
+
+判断：
+
+- off明显恢复：残差注入正在干扰动作策略；
+- on/off基本相同：策略没有真正使用残差，或scratch模型本身已经较差；
+- off更差：残差有帮助，但scalar gate或区域分配不稳定。
+
+### 20.2 梯度和实际残差比例诊断
+
+需要记录 raw gate、tanh(raw gate)、schedule、effective gate、残差范数、融合视觉特征范数、residual ratio、spatial predictor梯度和gate梯度。仅观察SpatialGate不足以判断实际扰动强度。
+
+### 20.3 Stop-gradient 残差
+
+将注入Action DiT的空间残差detach，使 spatial predictor只由spatial loss训练，避免action loss和spatial loss之间的梯度冲突。先用 baseline epoch40微调4轮筛选，再决定是否scratch50。
+
+### 20.4 S-aux-shared
+
+当前S-aux的空间预测器是独立head，spatial loss主要只更新该head，不能证明空间监督改善了动作策略。S-aux-shared需要让spatial loss回传到Action DiT使用的共享视觉表示，测试未来空间监督是否能改善动作条件。
+
+### 20.5 Region Gate
+
+只有在 residual-on 比 residual-off有效、但不同任务或区域表现不一致时进行。第一版使用8个静态region gate，除gate数量外保持其他参数相同。
+
+### 20.6 Task-conditioned Interaction Query
+
+如果 residual-off、stop-gradient、S-aux-shared和region gate均无效，再停止固定2×4网格，转向由当前DINO、VTT和qpos动态选择交互区域的interaction query。
+
+## 21. Stop-gradient 与 S-aux-shared 的区别
+
+两者目的不同：
+
+~~~text
+Stop-gradient：保留空间残差注入，切断action loss到spatial predictor的梯度，诊断梯度冲突。
+
+S-aux-shared：不要求直接注入预测残差，让spatial loss更新共享视觉表示，诊断空间监督是否能改善动作表征。
+~~~
+
+Stop-gradient关注优化路径；S-aux-shared关注表示学习路径。两者不能互相替代。
+
+## 22. 当前未解决问题与下一步
+
+已知问题：
+
+1. v2微调版clean提升明显，但randomized提升有限；
+2. v2 scratch版clean和randomized都低于C32；
+3. 固定网格将物体、机械臂、背景和随机化因素混在一起；
+4. global intent scratch在randomized下下降；
+5. 当前S-aux独立head不改变Action DiT动作路径；
+6. 现有正式结果主要是seed0、每任务50次，统计稳定性仍不足。
+
+下一步建议：
+
+1. 完成v3 warm-up ft4快速筛选；
+2. 对已训练v2/v3 checkpoint做residual-off测试；
+3. 做stop-gradient快速消融；
+4. 实现S-aux-shared并进行4轮快速验证；
+5. 只有空间残差确定有用但区域差异明显时才做region gate；
+6. 固定网格路线失败后再开发interaction query；
+7. 暂时不把Global Intent与Spatial Residual同时启用。
+
