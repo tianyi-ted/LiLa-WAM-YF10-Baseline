@@ -1,0 +1,17 @@
+# Task-only overlay. Hardware, cameras, gripper and safety remain in
+# ../config.master_slave.yaml.
+collection:
+  task_name: place_red_block_into_box
+  split: demo_clean
+  instructions:
+    # Stored with every episode for traceability. The current LiLa-WAM uses a
+    # precomputed visual task-condition vector rather than online text tokens.
+    seen:
+      - "pick up the red block and place it in the box"
+      - "grasp the red block and put it into the box"
+      - "place the red block inside the box"
+      - "move the red block into the box"
+      - "pick up the small red block and put it in the box"
+    unseen:
+      - "put the small red cube into the box"
+      - "grasp the red cube and place it inside the container"

@@ -9,6 +9,11 @@ artifacts/
 checkpoints_vla/
 eval_result/
 logs/
+/log/
+/checkpoints/
+/training_input_preview/
+/robot/edulite_a3_vla/inference_outputs_on_blue_block/
+/.~*.docx
 
 # Real-robot recordings, camera snapshots, and inference diagnostics.
 # Keep source/config/docs in robot/ visible without accidentally staging GBs.

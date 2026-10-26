@@ -64,10 +64,12 @@ checkpoint 位于 `checkpoints_vla/edulite_single/sft_时间戳/checkpoint_epoch
 
 ## 3. 真机推理（训练完成后）
 
+真机推理使用独立的 `edulite_deploy` 环境，版本与离线验证方式见[部署环境说明](../edulite_a3_vla/DEPLOY_ENV.md)。训练继续使用 RoboTwin。
+
 编辑 `robot/edulite_a3_vla/config.real_single.yaml`，把 `model.checkpoint_path` 中的 `sft_REPLACE_WITH_RUN_TIMESTAMP` 改为实际训练目录；最好同时把 `model.config_path` 指向该目录的 `config.yaml`，确保是训练时的配置副本。先执行不打开相机和 CAN 的静态检查，再检查现场后执行：
 
 ```bash
-conda activate RoboTwin
+conda activate edulite_deploy
 cd /home/lab347-no10/Tianyi/LiLa-WAM
 python robot/edulite_a3_vla/real_vla.py \
   --config robot/edulite_a3_vla/config.real_single.yaml --check-only

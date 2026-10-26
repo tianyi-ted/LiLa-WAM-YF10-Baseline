@@ -5,7 +5,7 @@ common:
   action_chunk_size: 32
   proprio_len: 1
   num_inference_steps: 10
-  action_execution_horizon: 32
+  action_execution_horizon: 16
 
 dataset:
   type: robotwin

@@ -1,0 +1,84 @@
+# Standalone Meta-World MT10 VLA configuration.
+# This file is intentionally independent of all RoboTwin YAML files.
+common:
+  action_dim: 4
+  state_dim: 4
+  action_chunk_size: 32
+  proprio_len: 1
+  num_inference_steps: 10
+  action_execution_horizon: 4
+
+dataset:
+  type: "metaworld"
+  dataset_dir: "/home/lab347-no10/Tianyi/LiLa-WAM/data/metaworld_mt10_corner2_480"
+  task_names:
+    - reach-v3
+    - push-v3
+    - pick-place-v3
+    - door-open-v3
+    - drawer-open-v3
+    - drawer-close-v3
+    - button-press-topdown-v3
+    - peg-insert-side-v3
+    - window-open-v3
+    - box-close-v3
+  camera_names: ["corner2"]
+  # Enable only with newly collected workspace-camera data:
+  # camera_profile: "metaworld_vla/configs/workspace_camera.json"
+  render_size: [480, 480]  # Raw collection/evaluation RGB, width x height.
+  image_size: [224, 224]   # DINO/model input; direct resize, no crop.
+  task_cond_dir: "/home/lab347-no10/Tianyi/LiLa-WAM/embeddings/metaworld_mt10_corner2_480_input224_vtt_dinov3b"
+  image_aug: false
+  future_frame_offset: 32
+
+model:
+  num_registers: 2
+  use_task_cond: true
+  vision_encoder:
+    checkpoint_path: "/home/lab347-no10/Tianyi/LiLa-WAM/pretrained/dinov3-vitb16"
+    feat_layers: [-7, -4, -2]
+    include_cls_register: true
+    fusion_mode: "concat"
+    concat:
+      proj_type: "linear"
+      pre_norm: true
+      out_dim: null
+  future_feat:
+    enabled: true
+    target_layer: -2
+    num_decoder_layers: 4
+    num_heads: 4
+  action_expert:
+    depth: 12
+    hidden_size: 512
+    num_heads: 8
+    vlm_adapter_num_queries: 64
+    adapter_depth: 4
+
+training:
+  seed: 0
+  deterministic: false
+  batch_size: 96
+  grad_accum_steps: 1
+  time_sampler: "logit_normal"
+  time_mu: 0.0
+  time_sigma: 1.0
+  learning_rate: 2e-4
+  lr_min: 5e-5
+  weight_decay: 1e-2
+  betas: [0.9, 0.99]
+  grad_clip_norm: 1.0
+  epochs: 50
+  save_interval_epoch: 5
+  lambda_future_feat: 0.5
+  use_vel_weight: false
+  vel_weight_alpha: 0.2
+  vel_weight_sigma: 0.01
+
+inference:
+  smooth_actions: false
+  smooth_sigma: 1.0
+
+system:
+  num_workers: 4
+  pin_memory: true

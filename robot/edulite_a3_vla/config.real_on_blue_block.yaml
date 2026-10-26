@@ -1,0 +1,55 @@
+# Fill RUN_DIR after training. All three model paths must come from the same run.
+model:
+  config_path: ../../checkpoints_vla/edulite_single_on_blue_block/sft_2026-10-20_14-36-31/config.yaml
+  checkpoint_path: ../../checkpoints_vla/edulite_single_on_blue_block/sft_2026-10-20_14-36-31/checkpoint_epoch_40.pt
+  norm_stats_path: ../../utils/stat-edulite-single-on-blue-block.json
+  device: cuda
+  dtype: bfloat16
+  task_name: place_red_block_on_blue_block
+  instruction: "pick up the red block and place it on top of the blue block"
+
+hardware:
+  collector_config_path: ../edulite_a3_collect/config.master_slave.yaml
+  arm_side: right
+  camera_name: chest_camera
+
+runtime:
+  action_rate_hz: 30.0
+  control_rate_hz: 100.0
+  prefetch_threshold_actions: 8
+  start_delay_s: 3.0
+  max_episode_s: 60.0
+  camera_max_age_s: 0.25
+  require_preview_before_execute: true
+  joint_bspline:
+    enabled: false
+    degree: 3
+    history_actions: 2
+    control_points: 8
+    history_weight: 4.0
+    fallback_if_worse: true
+
+visualization:
+  enabled: true
+  output_root: ./inference_outputs_on_blue_block
+  save_video: true
+  video_fps: 30.0
+
+safety:
+  clamp_to_training_range: true
+  # Match home()'s mechanical margin. 0.15 rad excludes L2=+5deg/L3=-5deg.
+  joint_limit_margin_rad: 0.03
+  filter_omega: 10.0
+  max_velocity_rad_s: [0.35, 0.35, 0.35, 0.45, 0.45, 0.45]
+  max_acceleration_rad_s2: [1.2, 1.2, 1.2, 1.8, 1.8, 1.8]
+  gripper_filter_alpha: 0.70
+  gripper_max_target_rate_norm_s: 2.00
+  gripper_command_deadband_norm: 0.005
+  max_target_step_rad: [0.08, 0.08, 0.08, 0.10, 0.10, 0.10]
+  max_follow_error_rad: 0.30
+  follow_error_cycles: 20
+  feedback_timeout_s: 0.20
+  startup_feedback_timeout_s: 2.0
+  model_command_timeout_s: 1.0
+  raw_joint_limit_tolerance_rad: 0.25
+  raw_gripper_tolerance: 0.20

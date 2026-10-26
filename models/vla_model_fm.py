@@ -266,6 +266,42 @@ def spatial_intent_loss(pred, target):
     }
 
 
+class TaskConditionedIntentPool(nn.Module):
+    """One causal task/state query; target pooling remains fixed mean pooling."""
+    def __init__(self, vision_dim, proprio_dim, task_cond_dim, grid_size,
+                 hidden_dim=256, num_heads=4):
+        super().__init__()
+        if task_cond_dim is None:
+            raise ValueError("task_attention pooling requires VTT task conditioning")
+        if hidden_dim % 4 or hidden_dim % num_heads:
+            raise ValueError("pool hidden_dim must be divisible by 4 and num_heads")
+        self.grid_size = tuple(grid_size)
+        self.query = nn.Sequential(
+            nn.LayerNorm(proprio_dim + task_cond_dim),
+            nn.Linear(proprio_dim + task_cond_dim, hidden_dim), nn.GELU(),
+        )
+        self.patch_proj = nn.Sequential(nn.LayerNorm(vision_dim), nn.Linear(vision_dim, hidden_dim))
+        h, w = self.grid_size
+        y = get_1d_sincos_pos_embed(hidden_dim // 2, h)[0]
+        x = get_1d_sincos_pos_embed(hidden_dim // 2, w)[0]
+        pos = torch.cat((y[:, None, :].expand(h, w, -1),
+                         x[None, :, :].expand(h, w, -1)), dim=-1).reshape(1, h*w, hidden_dim)
+        self.register_buffer("position", pos, persistent=False)
+        self.attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=0.0, batch_first=True)
+        self.output = nn.Linear(hidden_dim, vision_dim)
+
+    def forward(self, patches, state, task_cond):
+        if task_cond is None:
+            raise ValueError("task_attention pooling requires task_cond")
+        if patches.shape[1] != self.position.shape[1]:
+            raise ValueError("task_attention patch count does not match configured image grid")
+        query = self.query(torch.cat((state[:, -1, :], task_cond), dim=-1)).unsqueeze(1)
+        values = self.patch_proj(patches)
+        keys = values + self.position.to(values)
+        pooled, _ = self.attention(query, keys, values, need_weights=False)
+        return self.output(pooled[:, 0])
+
+
 class GlobalIntentPredictor(nn.Module):
     """Predict a global future-change vector from causal, current-time inputs."""
     def __init__(self, vision_dim, proprio_dim, task_cond_dim=None,
@@ -430,6 +466,10 @@ class VLAModel(nn.Module):
                  intent_feat_dim=None,
                  intent_gate_init=0.0,
                  intent_gate_trainable=True,
+                 intent_pooling="mean",
+                 intent_pool_hidden_dim=256,
+                 intent_pool_num_heads=4,
+                 intent_pool_grid_size=(15, 20),
                  # --- Fixed spatial interaction intent ---
                  use_spatial_intent=False,
                  inject_spatial_intent=False,
@@ -517,6 +557,14 @@ class VLAModel(nn.Module):
         # the predicted token is appended to the DiT sequence.
         if self.use_global_intent:
             intent_feat_dim = intent_feat_dim or dino_feat_dims[0]
+            self.intent_pooling = intent_pooling
+            if intent_pooling == "task_attention":
+                self.intent_pool = TaskConditionedIntentPool(
+                    intent_feat_dim, proprio_dim, task_cond_dim, intent_pool_grid_size,
+                    intent_pool_hidden_dim, intent_pool_num_heads,
+                )
+            elif intent_pooling != "mean":
+                raise ValueError(f"Unknown global intent pooling: {intent_pooling}")
             self.intent_predictor = GlobalIntentPredictor(
                 vision_dim=intent_feat_dim,
                 proprio_dim=proprio_dim,
@@ -686,7 +734,12 @@ class VLAModel(nn.Module):
         """Predict m_H using current-time information only."""
         if not self.use_global_intent:
             return None
-        current_global = fixed_layer_norm(current_patch_features.mean(dim=1))
+        if self.intent_pooling == "mean":
+            current_global = fixed_layer_norm(current_patch_features.mean(dim=1))
+        else:
+            current_global = fixed_layer_norm(self.intent_pool(
+                current_patch_features, qpos_history, task_cond,
+            ))
         batch_size = current_global.shape[0]
         if horizon is None:
             horizon = torch.full(

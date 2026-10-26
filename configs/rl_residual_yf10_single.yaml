@@ -1,0 +1,29 @@
+# Isolated RL prototype. This file is NOT read by train.py or eval_yf10.sh.
+# It wraps an existing SFT checkpoint and trains only a tiny residual/value
+# policy in a separate output directory.
+rl:
+  enabled: true
+  mode: residual
+  num_envs: 1
+  rollout_length: 64
+  train_batch_size: 4
+  ppo_epochs: 2
+  gamma: 0.99
+  gae_lambda: 0.95
+  learning_rate: 1.0e-4
+  clip_ratio: 0.2
+  entropy_coef: 0.0
+  value_coef: 0.5
+  bc_coef: 0.1
+  residual_limit: 0.10
+  residual_scale: 1.0
+  freeze_sft: true
+  freeze_dino: true
+  freeze_action_expert: true
+  use_stage_reward: false
+  output_dir: "./rl_runs/yf10_residual"
+
+base:
+  config: "./configs/yf10_small_dinov3b.yaml"
+  checkpoint: "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/yf10_dinov3b_small/sft_2026-09-20_15-07-28/checkpoint_epoch_40.pt"
+  norm_stats: "/home/lab347-no10/Tianyi/LiLa-WAM/artifacts/yf10/norm_stats.json"

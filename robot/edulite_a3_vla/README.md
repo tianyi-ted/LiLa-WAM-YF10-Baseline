@@ -1,5 +1,7 @@
 # LiLa-WAM 原生单臂真机推理
 
+真机 VLA 部署现在使用独立的 `edulite_deploy` conda 环境（已在本机创建）；环境版本、离线检查和运行命令见 [部署环境说明](DEPLOY_ENV.md)。训练仍使用 `RoboTwin`，轨迹回放可继续使用已验证的 `edulite_collect`。
+
 当前程序是 `real_vla.py`，只接受训练配置中的 `action_dim=7`、`state_dim=8`，执行从臂 can0 的 L1～L6 和 L7。使用 [config.real_single.yaml](config.real_single.yaml)；其中 checkpoint 路径仍是占位符，必须在完成新数据训练后填入实际目录。旧 RoboTwin 14D checkpoint、旧统计量和[归档配置](../docs/legacy/config.real_vla.14d.yaml)与当前程序不兼容。
 
 ## 采集数据真机回放
@@ -55,9 +57,10 @@ python robot/edulite_a3_vla/inspect_dataset_tk.py \
 
 真机部署使用 `config.real_single.yaml` 中的 `chest_camera`。相机采集线程输出 RGB；`real_vla.py` 在送入模型前统一经过 `_model_camera_image()` 的通道转换，数据集原文件不改变。训练配置中的 `dataset.camera_names` 必须仍为 `["chest_camera"]`。
 
-在 `RoboTwin` 环境下，先检查配置、checkpoint、统计量和任务向量；该检查不会打开相机或 CAN：
+在 `edulite_deploy` 环境下，先检查配置、checkpoint、统计量和任务向量；该检查不会打开相机或 CAN：
 
 ```bash
+conda activate edulite_deploy
 cd /home/lab347-no10/Tianyi/LiLa-WAM
 python robot/edulite_a3_vla/real_vla.py \
   --config robot/edulite_a3_vla/config.real_single.yaml --check-only

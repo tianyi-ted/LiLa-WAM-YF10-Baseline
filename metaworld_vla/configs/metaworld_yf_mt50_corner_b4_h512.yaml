@@ -1,0 +1,124 @@
+# External MetaWorld_YF MT50, single-camera baseline (corner PNG -> 224 RGB).
+# This file is intentionally independent of all RoboTwin YAML files.
+common:
+  action_dim: 4
+  state_dim: 4
+  action_chunk_size: 32
+  proprio_len: 1
+  num_inference_steps: 10
+  action_execution_horizon: 4
+
+dataset:
+  type: "metaworld"
+  dataset_dir: "/home/lab347-no10/Tianyi/LiLa-WAM/data/metaworld_yf_mt50"
+  format: "metaworld_yf"
+  online_eval_verified: false  # Camera pose/assets differ; calibrate before online rollouts.
+  task_names:
+    - assembly-v3
+    - basketball-v3
+    - bin-picking-v3
+    - box-close-v3
+    - button-press-topdown-v3
+    - button-press-topdown-wall-v3
+    - button-press-v3
+    - button-press-wall-v3
+    - coffee-button-v3
+    - coffee-pull-v3
+    - coffee-push-v3
+    - dial-turn-v3
+    - disassemble-v3
+    - door-close-v3
+    - door-lock-v3
+    - door-open-v3
+    - door-unlock-v3
+    - drawer-close-v3
+    - drawer-open-v3
+    - faucet-close-v3
+    - faucet-open-v3
+    - hammer-v3
+    - hand-insert-v3
+    - handle-press-side-v3
+    - handle-press-v3
+    - handle-pull-side-v3
+    - handle-pull-v3
+    - lever-pull-v3
+    - peg-insert-side-v3
+    - peg-unplug-side-v3
+    - pick-out-of-hole-v3
+    - pick-place-v3
+    - pick-place-wall-v3
+    - plate-slide-back-side-v3
+    - plate-slide-back-v3
+    - plate-slide-side-v3
+    - plate-slide-v3
+    - push-back-v3
+    - push-v3
+    - push-wall-v3
+    - reach-v3
+    - reach-wall-v3
+    - shelf-place-v3
+    - soccer-v3
+    - stick-pull-v3
+    - stick-push-v3
+    - sweep-into-v3
+    - sweep-v3
+    - window-close-v3
+    - window-open-v3
+  camera_names: ["corner"]  # YF key, not a verified MuJoCo camera-name mapping.
+  render_size: [256, 256]  # Raw collection/evaluation RGB, width x height.
+  image_size: [224, 224]   # DINO/model input; direct resize, no crop.
+  task_cond_dir: "/home/lab347-no10/Tianyi/LiLa-WAM/embeddings/metaworld_yf_mt50_corner_input224_vtt_dinov3b"
+  image_aug: false
+  future_frame_offset: 32
+
+model:
+  num_registers: 2
+  use_task_cond: true
+  vision_encoder:
+    checkpoint_path: "/home/lab347-no10/Tianyi/LiLa-WAM/pretrained/dinov3-vitb16"
+    feat_layers: [-7, -4, -2]
+    include_cls_register: true
+    fusion_mode: "concat"
+    concat:
+      proj_type: "linear"
+      pre_norm: true
+      out_dim: null
+  future_feat:
+    enabled: true
+    target_layer: -2
+    num_decoder_layers: 4
+    num_heads: 4
+  action_expert:
+    depth: 12
+    hidden_size: 512
+    num_heads: 8
+    vlm_adapter_num_queries: 64
+    adapter_depth: 4
+
+training:
+  seed: 0
+  deterministic: false
+  batch_size: 96
+  grad_accum_steps: 1
+  time_sampler: "logit_normal"
+  time_mu: 0.0
+  time_sigma: 1.0
+  learning_rate: 2e-4
+  lr_min: 5e-5
+  weight_decay: 1e-2
+  betas: [0.9, 0.99]
+  grad_clip_norm: 1.0
+  epochs: 50
+  save_interval_epoch: 5
+  lambda_future_feat: 0.5
+  use_vel_weight: false
+  vel_weight_alpha: 0.2
+  vel_weight_sigma: 0.01
+
+inference:
+  smooth_actions: false
+  smooth_sigma: 1.0
+
+system:
+  num_workers: 4
+  pin_memory: true

@@ -316,8 +316,12 @@ class EDULITEVLAController:
             home_target > self.upper + 0.05
         ):
             raise ValueError(
-                "trained action range does not cover the configured home pose; "
-                "review the demonstrations and normalization stats before deployment"
+                "configured home pose is outside runtime joint limits "
+                "(training range intersected with mechanical limits and safety.joint_limit_margin_rad); "
+                f"home_deg={np.rad2deg(home_target).round(3).tolist()}, "
+                f"runtime_min_deg={np.rad2deg(self.lower).round(3).tolist()}, "
+                f"runtime_max_deg={np.rad2deg(self.upper).round(3).tolist()}; "
+                "check the mechanical margin as well as the demonstrations and normalization stats"
             )
         self.raw_lower = DEFAULT_LIMITS[:, 0]
         self.raw_upper = DEFAULT_LIMITS[:, 1]

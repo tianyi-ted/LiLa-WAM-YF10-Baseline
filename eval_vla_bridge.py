@@ -205,13 +205,24 @@ def main(usr_args):
         f"checkpoints_vla/{ckpt_setting}/checkpoint_epoch_{checkpoint_ep}.pt",
     )
 
+    # An explicitly supplied config must be authoritative.  This is required
+    # for inference-only ablations (e.g. residual_scale=0) where the model
+    # checkpoint's training config intentionally differs from eval config.
+    # If no config was supplied, retain the convenient checkpoint-config
+    # fallback, and finally use the project default.
     auto_config_path = os.path.join(os.path.dirname(checkpoint_path), "config.yaml")
-    if os.path.exists(auto_config_path):
+    requested_config = usr_args.get("config_path")
+    if requested_config:
+        config_path = requested_config if os.path.isabs(requested_config) else os.path.join(
+            model_base_path, requested_config
+        )
+        print(f"\033[92m[Config] Using explicitly supplied config: {config_path}\033[0m")
+    elif os.path.exists(auto_config_path):
         config_path = auto_config_path
         print(f"\033[92m[Config] Auto load checkpoint config: {config_path}\033[0m")
     else:
-        config_path = os.path.join(model_base_path, usr_args["config_path"])
-        print(f"\033[93m[Config] not fine {auto_config_path}, return to: {config_path}\033[0m")
+        config_path = os.path.join(model_base_path, "configs/robotwin_all.yaml")
+        print(f"\033[93m[Config] No config supplied/checkpoint config missing; using default: {config_path}\033[0m")
 
     norm_stats_path = os.path.join(model_base_path, usr_args["norm_stats_path"])
 
@@ -459,7 +470,16 @@ def parse_args_and_config():
     parser.add_argument("--checkpoint_ep", type=str, required=True)
     parser.add_argument("--model_base_path", type=str, required=True)
     parser.add_argument("--norm_stats_path", type=str, default='utils/stat-500-all.json')
-    parser.add_argument("--config_path", type=str, default='configs/robotwin_all.yaml')
+    parser.add_argument(
+        "--config_path",
+        type=str,
+        default=None,
+        help=(
+            "Explicit VLA config used for model construction. When provided, "
+            "it overrides the checkpoint's config.yaml; when omitted, the "
+            "checkpoint config is used if available, otherwise configs/robotwin_all.yaml."
+        ),
+    )
 
     parser.add_argument("--vla_root", type=str, required=True,
                         help="VLA project root (used to import robotwin_infer)")

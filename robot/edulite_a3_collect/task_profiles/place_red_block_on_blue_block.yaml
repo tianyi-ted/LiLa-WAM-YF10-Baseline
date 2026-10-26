@@ -1,0 +1,17 @@
+# Task-only overlay. Hardware, cameras, gripper and safety remain in
+# ../config.master_slave.yaml.
+collection:
+  task_name: place_red_block_on_blue_block
+  split: demo_clean
+  instructions:
+    # Stored with every episode for traceability. The current LiLa-WAM uses a
+    # precomputed visual task-condition vector rather than online text tokens.
+    seen:
+      - "pick up the red block and place it on top of the blue block"
+      - "stack the red block on the blue block"
+      - "place the red cube above the blue cube"
+      - "put the red block onto the blue block"
+      - "grasp the red block and stack it on the blue block"
+    unseen:
+      - "put the small red cube on top of the blue cube"
+      - "stack the red cube above the blue cube"

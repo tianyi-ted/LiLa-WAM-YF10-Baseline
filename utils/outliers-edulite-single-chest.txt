@@ -1,0 +1,5 @@
+Outlier Report - Mode: clean - Total: 0
+============================================================
+Threshold: 7D A3 actions use physical joint limits; 14D actions use ±π
+Delete mode: OFF
+
