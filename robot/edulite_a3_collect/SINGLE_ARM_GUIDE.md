@@ -133,22 +133,23 @@ python train.py \
   --save_dir checkpoints_vla/edulite_single_multitask
 ```
 
-这里不要直接使用当前打开的 `yf10_dinov3b_h512_g2_c32_ft4.yaml`：它是 YF10 仿真的 14D action/16D state 四轮微调配置，并假定有匹配的 14D 初始化 checkpoint。新配置是 7D/8D、50 epoch 的独立真机训练入口。旧单任务 checkpoint 虽然维度相同，但继续微调容易偏向新增任务；第一版两任务基线建议从头训练，之后再单独比较微调方案。
+这里不要直接使用 `yf10_dinov3b_h512_g2_c32_ft4.yaml`：它是 YF10 仿真的 14D action/16D state 四轮微调配置，并假定有匹配的 14D 初始化 checkpoint。联合配置是 7D/8D、DINOv3-L、Action Expert depth 12 / hidden 512；2026-10-28 已与当前单任务配置对齐为 batch 96、梯度累积 1、200 epochs、每 5 轮保存，动作块 32、执行 horizon 16。第一版联合 baseline 从头训练，不带 `--init_from` 或 `--resume`；冻结的 DINOv3 仍加载本地预训练权重。
 
-训练完成后，将 `config.real_single.yaml` 中的三条路径改成同一训练实验的 `config.yaml`、checkpoint 和 `stat-edulite-single-multitask.json`。同一个 checkpoint 通过任务名选择不同的 `task_cond.npy`。先检查再执行红块叠蓝块任务：
+训练完成后，使用独立的 `robot/edulite_a3_vla/config.real_multitask.yaml`。将其中两处 `sft_REPLACE_WITH_RUN_TIMESTAMP` 替换为实际训练目录名，默认测试 epoch 200，也可替换为实际保存的其他轮次。统计量已指向 `stat-edulite-single-multitask.json`。同一个 checkpoint 通过任务名选择不同的 `task_cond.npy`；该部署配置保留 0.03 rad 限位余量，B 样条关闭。切换到独立真机部署环境后先检查再执行：
 
 ```bash
+conda activate edulite_deploy
 python robot/edulite_a3_vla/real_vla.py \
-  --config robot/edulite_a3_vla/config.real_single.yaml \
+  --config robot/edulite_a3_vla/config.real_multitask.yaml \
   --task-name place_red_block_on_blue_block \
   --instruction "pick up the red block and place it on top of the blue block" \
   --check-only
 
 python robot/edulite_a3_vla/real_vla.py \
-  --config robot/edulite_a3_vla/config.real_single.yaml \
+  --config robot/edulite_a3_vla/config.real_multitask.yaml \
   --task-name place_red_block_on_blue_block \
   --instruction "pick up the red block and place it on top of the blue block" \
   --execute
 ```
 
-测试原来的入盒任务时省略覆盖参数，或显式使用 `--task-name place_red_block_into_box`。当前模型不会在线编码 `--instruction` 文本；真正区分任务的是 `--task-name` 对应的预计算向量，instruction 只是日志中的可读描述，因此任务名必须与数据目录完全一致。
+测试入盒任务时显式使用 `--task-name place_red_block_into_box --instruction "pick up the red block and place it in the box"`，同样先 `--check-only` 再 `--execute`；默认部署任务为叠蓝块。当前模型不会在线编码 `--instruction` 文本；真正区分任务的是 `--task-name` 对应的预计算向量，instruction 只是日志中的可读描述，因此任务名必须与数据目录完全一致。

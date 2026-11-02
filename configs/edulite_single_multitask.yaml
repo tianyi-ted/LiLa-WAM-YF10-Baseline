@@ -14,8 +14,7 @@ dataset:
   task_names:
     - place_red_block_into_box
     - place_red_block_on_blue_block
-  # Both cameras remain in HDF5, but the current model consumes only this
-  # primary camera. Multi-camera fusion is not enabled in this configuration.
+  # Use the same primary camera as the single-task real-robot baseline.
   camera_names: [chest_camera]
   image_size: [320, 240]
   task_cond_dir: /home/lab347-no10/Tianyi/LiLa-WAM/embeddings/edulite_single_multitask_chest
@@ -51,8 +50,9 @@ model:
     adapter_depth: 4
 
 training:
-  batch_size: 8
-  grad_accum_steps: 8
+  # Match the current on-blue-block single-task baseline training settings.
+  batch_size: 96
+  grad_accum_steps: 1
   time_sampler: logit_normal
   time_mu: 0.0
   time_sigma: 1.0
@@ -62,7 +62,7 @@ training:
   betas: [0.9, 0.99]
   grad_clip_norm: 1.0
   epochs: 50
-  save_interval_epoch: 1
+  save_interval_epoch: 5
   lambda_future_feat: 0.5
   use_vel_weight: false
   vel_weight_alpha: 0.2

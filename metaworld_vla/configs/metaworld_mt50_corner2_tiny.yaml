@@ -75,6 +75,7 @@ dataset:
 model:
   num_registers: 2
   use_task_cond: true
+  inject_task_cond: false
   vision_encoder:
     checkpoint_path: "/home/lab347-no10/Tianyi/LiLa-WAM/pretrained/dinov3-vitb16"
     feat_layers: [-4]
@@ -85,7 +86,7 @@ model:
       pre_norm: true
       out_dim: null
   future_feat:
-    enabled: true
+    enabled: false
     target_layer: -2
     num_decoder_layers: 4
     num_heads: 4
@@ -111,7 +112,7 @@ training:
   grad_clip_norm: 1.0
   epochs: 50
   save_interval_epoch: 5
-  lambda_future_feat: 0.5
+  lambda_future_feat: 0.0
   use_vel_weight: false
   vel_weight_alpha: 0.2
   vel_weight_sigma: 0.01

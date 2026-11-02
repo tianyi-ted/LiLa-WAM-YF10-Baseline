@@ -98,7 +98,7 @@ model:
     pool_num_heads: 4
     hidden_size: 512
     horizon_embed_dim: 32
-    gate_init: 0.1
+    gate_init: 0.0
     gate_trainable: true
   action_expert:
     depth: 12

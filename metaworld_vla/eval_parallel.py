@@ -1,4 +1,4 @@
-"""Run independent task shards of eval.py, then validate and merge results."""
+"""Run task shards of eval.py (each episode stops on success), then merge."""
 import argparse
 import json
 import os
@@ -10,19 +10,31 @@ import time
 import uuid
 
 from omegaconf import OmegaConf
+from reuse_options import add_reuse_arguments, validate_reuse_arguments, reuse_cli
 
 
 def merge_results(paths, expected_tasks, checkpoint, test_num):
     tasks = {}
     protocol = None
+    generation = None
+    generation_seen = False
     for path in paths:
         result = json.loads(Path(path).read_text())
         if result['checkpoint'] != str(Path(checkpoint).resolve()):
             raise ValueError(f'{path}: checkpoint mismatch')
-        signature = (result.get('seed'), result.get('horizon'), result.get('test_num'), result.get('rng_protocol'))
+        signature = (result.get('seed'), result.get('horizon'), result.get('test_num'),
+                     result.get('rng_protocol'), result.get('stop_on_success', False),
+                     result.get('policy_seed'), result.get('scene_sampling'),
+                     result.get('camera'), result.get('camera_profile'),
+                     result.get('render_size'), result.get('image_size'), result.get('metaworld_version'))
         if protocol is not None and signature != protocol:
             raise ValueError(f'{path}: evaluation protocol mismatch')
         protocol = signature
+        current_generation = result.get('action_generation')
+        if generation_seen and current_generation != generation:
+            raise ValueError(f'{path}: action generation protocol mismatch')
+        generation = current_generation
+        generation_seen = True
         for task, item in result['tasks'].items():
             if task in tasks:
                 raise ValueError(f'Duplicate task result: {task}')
@@ -37,14 +49,18 @@ def merge_results(paths, expected_tasks, checkpoint, test_num):
     tasks = {task: tasks[task] for task in expected_tasks}
     return dict(checkpoint=str(Path(checkpoint).resolve()), seed=protocol[0],
                 horizon=protocol[1], test_num=test_num, rng_protocol=protocol[3],
-                tasks=tasks,
+                stop_on_success=protocol[4],
+                **{key: result[key] for key in ('policy_seed', 'scene_sampling', 'camera',
+                    'camera_profile', 'render_size', 'image_size', 'metaworld_version',
+                    'config', 'stats') if key in result},
+                tasks=tasks, action_generation=generation,
                 overall_success_rate=sum(x['success_rate'] for x in tasks.values()) / len(tasks),
                 total_success=sum(x['success'] for x in tasks.values()),
                 total_episodes=sum(x['episodes'] for x in tasks.values()))
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__)
+def main(evaluator='eval.py', default_seed=0):
+    p = argparse.ArgumentParser(description=f'Run task shards of {evaluator}, then validate and merge results.')
     p.add_argument('--config', required=True)
     p.add_argument('--stats', required=True)
     p.add_argument('--checkpoint', required=True)
@@ -54,10 +70,12 @@ def main():
     p.add_argument('--threads-per-worker', type=int, default=1)
     p.add_argument('--test-num', type=int, default=50)
     p.add_argument('--horizon', type=int, default=500)
-    p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--seed', type=int, default=default_seed)
     p.add_argument('--device', default='cuda')
     p.add_argument('--dry-run', action='store_true', help='print shards and commands without starting evaluation')
+    add_reuse_arguments(p)
     args = p.parse_args()
+    validate_reuse_arguments(p, args)
     if min(args.workers, args.threads_per_worker, args.test_num, args.horizon) <= 0:
         p.error('workers, threads, test-num and horizon must be positive')
     cfg = OmegaConf.load(args.config)
@@ -86,11 +104,14 @@ def main():
     results = []
     for i, shard in enumerate(shards):
         output = run_dir / f'worker_{i:02d}.json'
-        command = [sys.executable, '-u', str(Path(__file__).with_name('eval.py')),
+        command = [sys.executable, '-u', str(Path(__file__).with_name(evaluator)),
                    '--config', args.config, '--stats', args.stats,
                    '--checkpoint', args.checkpoint, '--output', str(output),
                    '--test-num', str(args.test_num), '--horizon', str(args.horizon),
                    '--seed', str(args.seed), '--device', args.device, '--tasks', *shard]
+        command += reuse_cli(args)
+        if evaluator == 'eval_adapolicy.py':
+            command += ['--log-file', str(run_dir / f'worker_{i:02d}_detail.log')]
         commands.append(command)
         results.append(output)
         print(f'Worker {i}: {len(shard)} tasks; log={run_dir / f"worker_{i:02d}.log"}', flush=True)
@@ -100,7 +121,7 @@ def main():
         return
     run_dir.mkdir(parents=True)
     (run_dir / 'manifest.json').write_text(json.dumps(dict(commands=commands, task_shards=shards,
-        cuda_visible_devices=env.get('CUDA_VISIBLE_DEVICES'), threads_per_worker=args.threads_per_worker), indent=2) + '\n')
+        evaluator=evaluator, cuda_visible_devices=env.get('CUDA_VISIBLE_DEVICES'), threads_per_worker=args.threads_per_worker), indent=2) + '\n')
     processes, logs = [], []
     started = time.monotonic()
     try:
@@ -109,8 +130,23 @@ def main():
             logs.append(log)
             processes.append(subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env))
         finished = set()
+        offsets = [0] * workers
         while len(finished) < workers:
             for i, process in enumerate(processes):
+                if evaluator == 'eval_adapolicy.py':
+                    # Worker stdout contains only concise reports; full model
+                    # and per-episode diagnostics live in worker_XX.log files.
+                    with (run_dir / f'worker_{i:02d}.log').open() as progress:
+                        progress.seek(offsets[i])
+                        while True:
+                            position = progress.tell()
+                            line = progress.readline()
+                            if not line or not line.endswith('\n'):
+                                progress.seek(position)
+                                break
+                            if line.startswith(('Task ', 'Progress ', 'Overall ', 'Detailed log:', 'Starting ')):
+                                print(f'[Worker {i}] {line.rstrip()}', flush=True)
+                        offsets[i] = progress.tell()
                 status = process.poll()
                 if status is None or i in finished:
                     continue
@@ -122,7 +158,8 @@ def main():
         merged = merge_results(results, tasks, args.checkpoint, args.test_num)
         merged.update(workers=workers, wall_seconds=time.monotonic() - started, parts_dir=str(run_dir))
         args.output.write_text(json.dumps(merged, indent=2) + '\n')
-        print(f'Saved {args.output}: {merged["total_success"]}/{merged["total_episodes"]}', flush=True)
+        print(f'Saved {args.output}: {merged["total_success"]}/{merged["total_episodes"]} '
+              f'({merged["overall_success_rate"]:.2%})', flush=True)
     finally:
         for process in processes:
             if process.poll() is None:

@@ -22,3 +22,4 @@ logs/
 /robot/edulite_a3_collect/camera_snapshots/
 /robot/edulite_a3_vla/inference_outputs/
 /robot/edulite_a3_vla/inference_outputs_single/
+/robot/edulite_a3_vla/inference_outputs_multitask/

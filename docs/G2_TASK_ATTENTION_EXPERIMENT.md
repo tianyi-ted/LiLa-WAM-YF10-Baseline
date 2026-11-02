@@ -187,3 +187,111 @@ CUDA_VISIBLE_DEVICES=0 MUJOCO_GL=egl python metaworld_vla/eval.py \
 ```
 
 该命令评测配置中的全部50任务，不使用RoboTwin的demo_clean/demo_randomized；评测环境及goal采样协议应与已有Meta-World基线一致。新attention参数需要独立训练，不能用旧mean checkpoint直接评测新结构。
+
+## Meta-World task-attention 无gate对照（2026-10-26）
+
+新增配置：`metaworld_vla/configs/metaworld_mt50_corner2_g2_taskattn_nogate.yaml`。
+从当前 `metaworld_mt50_corner2_g2_taskattn.yaml` 复制，数据、跨度、模型宽度和训练预算不变，只设置：
+
+```yaml
+model:
+  global_intent:
+    use_gate: false
+    gate_init: 0.0       # 此时不参与前向，只保留兼容参数
+    gate_trainable: false
+```
+
+原配置没有use_gate字段时默认true，不改变原训练/评测。mean-G2也可以使用同一开关，但本次只创建task-attention无gate配置。
+无gate直接使用 `intent_to_token(prediction) + type_embedding`，不是删除token，不是Residual-off，也不是把gate设为0。
+为保留state_dict参数名兼容性，仍保存intent_gate参数，但无gate时冻结且不在前向使用。日志gate表示实际系数：无gate为1，原模式为tanh(raw)。
+虽然参数可以strict加载，checkpoint本身不决定use_gate开关，训练和测试必须使用相同YAML。旧有gate checkpoint加载无gate YAML会改变推理语义，只能作为推理消融，不能替代从头训练的无gate实验。resume时不应切换开关。
+
+```bash
+cd /home/lab347-no10/Tianyi/LiLa-WAM
+conda activate MetaWorldVLA
+mkdir -p log/metaworld_g2_taskattn_nogate
+CUDA_VISIBLE_DEVICES=0 python metaworld_vla/train.py \
+  --config metaworld_vla/configs/metaworld_mt50_corner2_g2_taskattn_nogate.yaml \
+  --stats stats/metaworld_mt50_corner2_480_50ep_4d.json \
+  --save-dir checkpoints/metaworld_mt50_corner2_g2_taskattn_nogate_seed0 \
+  2>&1 | tee log/metaworld_g2_taskattn_nogate/train.log
+```
+
+```bash
+CUDA_VISIBLE_DEVICES=0 MUJOCO_GL=egl python metaworld_vla/eval.py \
+  --config metaworld_vla/configs/metaworld_mt50_corner2_g2_taskattn_nogate.yaml \
+  --stats stats/metaworld_mt50_corner2_480_50ep_4d.json \
+  --checkpoint checkpoints/metaworld_mt50_corner2_g2_taskattn_nogate_seed0/checkpoint_epoch_40.pt \
+  --test-num 50 --horizon 500 --seed 0 \
+  --output eval_result/metaworld_mt50_g2_taskattn_nogate_ep40_seed0_n50.json
+```
+
+`utils/test_g2_nogate.py` 已通过CPU strict参数加载、默认/显式gate路径输出一致、DiT入口处token值检查及无gate梯度/优化器更新检查。尚未运行完整GPU训练/仿真评测。此开关控制输入幅度，不代表注意力使用比例。
+
+## 关闭直接VTT token、保留G2任务条件（2026-10-27）
+
+新增 `model.inject_task_cond`，缺省为true，原YAML无需修改。关闭方法：
+
+```yaml
+model:
+  use_task_cond: true
+  inject_task_cond: false
+```
+
+保留use_task_cond=true，使训练数据仍加载VTT、G2预测器和task-attention仍有任务条件维度。仅在DiT拼接序列时跳过直接VTT token，序列减少1个token；不屏蔽G2、不改变未来监督或gate。保持旧投影和类型参数的创建及初始化，以兼容旧state_dict和初始化随机序列；关闭时这组直接投影参数未使用，因此不会收到loss梯度。
+
+训练和推理由共享ModelFactory读取开关。checkpoint不保存这个Python布尔属性，必须归档配置、用对应YAML评测；不要在断点续训过程中切换。结构消融应从头训练，加载旧模型后仅改此开关只属于推理消融。无G2等其他任务条件通道时关闭直接VTT，会让动作模型失去显式任务条件，不等同于“任务信息只经G2传递”。本次未自动修改任何现有实验YAML。
+
+`utils/test_vtt_injection_switch.py` CPU检查已通过：默认与显式true数值一致、strict参数加载兼容、序列只减少1个token、G2预测本身不变且仍依赖VTT、G2任务条件路径梯度存在；已有池化和无gate测试也通过。未运行完整GPU训练或仿真测试。
+
+## 已实现：当前注意力加权的变化监督（2026-11-01）
+
+本节取代前文E路线“尚未实现”的状态，E的第一版现已接通。新配置：
+`metaworld_vla/configs/metaworld_mt50_corner2_easy_g2_attntarget.yaml`。
+它复制当前 `metaworld_mt50_corner2_easy_g2.yaml`，只新增：
+
+```yaml
+model:
+  global_intent:
+    target_pooling: current_attention
+    target_attention_mix: 0.5
+```
+
+旧配置缺省target_pooling=mean，保持原路径和参数键不变。新目标要求pooling=task_attention，混合系数必须在[0,1]。
+所有其他实验项保持原easy-G2设置：FutureFeat关闭、直接VTT关闭、G2无gate、未来跨度8、50轮规划、lambda_intent=0.1。
+
+### 实现及梯度边界
+
+同一次当前帧attention返回跨head平均权重alpha[B,P]；不缓存跨batch状态，不读取未来帧来生成query。设rho=target_attention_mix，使用 `w=(1-rho)/P+rho*alpha`，分别加权当前/未来的原始DINO patch，再计算 `LN(weighted_future)-LN(weighted_current)`。目标在no_grad中以FP32计算，alpha和两帧目标特征均停止梯度。预测器自己的attention输出保留梯度。
+
+旧mean分支继续need_weights=False；新目标分支在训练和推理都使用need_weights=True，避免两种模式走不同attention算子，推理丢弃权重且不需要未来图像。PyTorch的两种attention计算路径可能产生微小数值差异，但不改变模型参数；CPU检查已验证两者接近。rho=0在目标公式上退化为mean（可能有浮点求和差异），严格旧对照仍应使用target_pooling=mean。
+
+目标仍会随可学习attention跨训练步变化，detach不能消除这种漂移，也不能保证不偏向静态背景；混合0.5是待验证候选，不是最优结论。权重对应图像坐标，不是物体跟踪。本次不引入EMA、多query、空间残差或额外未来编码。
+
+### 训练与测试
+
+```bash
+cd /home/lab347-no10/Tianyi/LiLa-WAM
+conda activate MetaWorldVLA
+mkdir -p log/metaworld_easy_g2_attntarget
+CUDA_VISIBLE_DEVICES=0 python metaworld_vla/train.py \
+  --config metaworld_vla/configs/metaworld_mt50_corner2_easy_g2_attntarget.yaml \
+  --stats stats/metaworld_mt50_corner2_480_50ep_4d.json \
+  --save-dir checkpoints/metaworld_mt50_corner2_easy_g2_attntarget_seed0 \
+  2>&1 | tee log/metaworld_easy_g2_attntarget/train.log
+```
+
+从头训练，使用独立空目录，不使用resume/init-from；以旧easy-G2为匹配对照。epoch40命令示例：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 MUJOCO_GL=egl python metaworld_vla/eval.py \
+  --config metaworld_vla/configs/metaworld_mt50_corner2_easy_g2_attntarget.yaml \
+  --stats stats/metaworld_mt50_corner2_480_50ep_4d.json \
+  --checkpoint checkpoints/metaworld_mt50_corner2_easy_g2_attntarget_seed0/checkpoint_epoch_40.pt \
+  --test-num 50 --horizon 500 --seed 0 \
+  --output eval_result/metaworld_mt50_easy_g2_attntarget_ep40_seed0_n50.json
+```
+
+### 已验证／未验证
+
+`utils/test_g2_attention_target.py`已通过CPU检查：旧配置默认/显式mean输出一致、strict参数加载、权重归一化、预测只用当前输入、手工目标公式、rho=0/1端点、目标无梯度、完整Flow Matching loss的前后向及优化器更新、每chunk只调用一次selector。旧池化/gate/VTT测试通过。未运行完整DINO GPU训练或仿真；注意力可视化和多seed收益仍待验证。

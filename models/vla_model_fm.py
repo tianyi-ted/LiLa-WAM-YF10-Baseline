@@ -290,7 +290,7 @@ class TaskConditionedIntentPool(nn.Module):
         self.attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=0.0, batch_first=True)
         self.output = nn.Linear(hidden_dim, vision_dim)
 
-    def forward(self, patches, state, task_cond):
+    def forward(self, patches, state, task_cond, return_attention=False):
         if task_cond is None:
             raise ValueError("task_attention pooling requires task_cond")
         if patches.shape[1] != self.position.shape[1]:
@@ -298,8 +298,12 @@ class TaskConditionedIntentPool(nn.Module):
         query = self.query(torch.cat((state[:, -1, :], task_cond), dim=-1)).unsqueeze(1)
         values = self.patch_proj(patches)
         keys = values + self.position.to(values)
-        pooled, _ = self.attention(query, keys, values, need_weights=False)
-        return self.output(pooled[:, 0])
+        pooled, weights = self.attention(
+            query, keys, values, need_weights=return_attention,
+            average_attn_weights=True,
+        )
+        output = self.output(pooled[:, 0])
+        return (output, weights[:, 0, :]) if return_attention else output
 
 
 class GlobalIntentPredictor(nn.Module):
@@ -466,6 +470,7 @@ class VLAModel(nn.Module):
                  intent_feat_dim=None,
                  intent_gate_init=0.0,
                  intent_gate_trainable=True,
+                 intent_use_gate=True,
                  intent_pooling="mean",
                  intent_pool_hidden_dim=256,
                  intent_pool_num_heads=4,
@@ -487,6 +492,9 @@ class VLAModel(nn.Module):
                  spatial_max_gate=None,
                  spatial_warmup_epochs=0,
                  spatial_ramp_epochs=0,
+                 inject_task_cond=True,
+                 intent_target_pooling="mean",
+                 intent_target_attention_mix=0.5,
                  ):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -496,6 +504,9 @@ class VLAModel(nn.Module):
         self.state_inject_start = state_inject_start
         self.num_dino_layers = len(dino_feat_dims)
         self.use_task_cond = task_cond_dim is not None
+        # Keep task-conditioned predictors and parameter initialization intact;
+        # this switch controls only the direct VTT token in the DiT sequence.
+        self.inject_task_cond = bool(inject_task_cond)
 
         self.fusion_mode = fusion_mode
         assert fusion_mode in ("per_layer", "concat"), f"Unknown fusion_mode: {fusion_mode}"
@@ -558,6 +569,14 @@ class VLAModel(nn.Module):
         if self.use_global_intent:
             intent_feat_dim = intent_feat_dim or dino_feat_dims[0]
             self.intent_pooling = intent_pooling
+            self.intent_target_pooling = intent_target_pooling
+            self.intent_target_attention_mix = float(intent_target_attention_mix)
+            if intent_target_pooling not in ("mean", "current_attention"):
+                raise ValueError(f"Unknown intent target pooling: {intent_target_pooling}")
+            if intent_target_pooling == "current_attention" and intent_pooling != "task_attention":
+                raise ValueError("current_attention target requires task_attention input pooling")
+            if not 0.0 <= self.intent_target_attention_mix <= 1.0:
+                raise ValueError("target_attention_mix must be in [0, 1]")
             if intent_pooling == "task_attention":
                 self.intent_pool = TaskConditionedIntentPool(
                     intent_feat_dim, proprio_dim, task_cond_dim, intent_pool_grid_size,
@@ -588,10 +607,11 @@ class VLAModel(nn.Module):
             raw_gate_init = math.atanh(gate_init)
             self.intent_gate = nn.Parameter(
                 torch.tensor(raw_gate_init, dtype=torch.float32),
-                requires_grad=bool(intent_gate_trainable),
+                requires_grad=bool(intent_gate_trainable) and bool(intent_use_gate),
             )
             self.intent_gate_init = gate_init
         self.intent_gate_trainable = bool(intent_gate_trainable)
+        self.intent_use_gate = bool(intent_use_gate)
 
         self.use_spatial_intent = use_spatial_intent
         self.inject_spatial_intent = inject_spatial_intent
@@ -689,8 +709,26 @@ class VLAModel(nn.Module):
                 num_layers=future_feat_depth,
             )
 
-    def make_global_intent_target(self, current_patch_features, future_patch_features):
+    def make_global_intent_target(self, current_patch_features, future_patch_features,
+                                 attention_weights=None):
         """Construct stop-gradient global change target m_H = LN(u_H) - LN(u_0)."""
+        if self.intent_target_pooling == "current_attention":
+            if attention_weights is None:
+                raise ValueError("current_attention target requires current-frame attention weights")
+            if current_patch_features.shape != future_patch_features.shape:
+                raise ValueError("current/future patch shapes must match for spatial target weighting")
+            if attention_weights.shape != current_patch_features.shape[:2]:
+                raise ValueError("attention weights must have shape [B, number_of_patches]")
+            # No gradient through target selection, raw target patches, or LN.
+            # The SAME current-frame weights select fixed image coordinates in
+            # both frames. This is not object correspondence/tracking.
+            with torch.no_grad():
+                alpha = attention_weights.detach().float()
+                rho = self.intent_target_attention_mix
+                weights = ((1.0 - rho) / alpha.shape[1] + rho * alpha).unsqueeze(-1)
+                current = (weights * current_patch_features.float()).sum(dim=1)
+                future = (weights * future_patch_features.float()).sum(dim=1)
+                return fixed_layer_norm(future) - fixed_layer_norm(current)
         current_global = fixed_layer_norm(current_patch_features.mean(dim=1))
         future_global = fixed_layer_norm(future_patch_features.mean(dim=1))
         return (future_global - current_global).detach()
@@ -708,6 +746,12 @@ class VLAModel(nn.Module):
             if isinstance(gate, nn.Parameter):
                 gate.data = gate.data.float()
         return self
+
+    def effective_intent_gate(self):
+        """Report 1 for direct token injection; retain the legacy gate key."""
+        if not self.intent_use_gate:
+            return self.intent_gate.new_tensor(1.0)
+        return torch.tanh(self.intent_gate)
 
     def effective_spatial_gate(self):
         gate = torch.tanh(self.spatial_gate)
@@ -730,12 +774,20 @@ class VLAModel(nn.Module):
             )
 
     def predict_global_intent(self, current_patch_features, qpos_history,
-                              task_cond=None, horizon=None):
+                              task_cond=None, horizon=None, return_attention=False):
         """Predict m_H using current-time information only."""
         if not self.use_global_intent:
             return None
+        attention_weights = None
         if self.intent_pooling == "mean":
             current_global = fixed_layer_norm(current_patch_features.mean(dim=1))
+        elif self.intent_target_pooling == "current_attention":
+            # Use the same attention code path at train/eval time. Inference
+            # still uses current observations only, and ignores target weights.
+            pooled, attention_weights = self.intent_pool(
+                current_patch_features, qpos_history, task_cond, return_attention=True,
+            )
+            current_global = fixed_layer_norm(pooled)
         else:
             current_global = fixed_layer_norm(self.intent_pool(
                 current_patch_features, qpos_history, task_cond,
@@ -755,7 +807,8 @@ class VLAModel(nn.Module):
             horizon = horizon.to(device=current_global.device, dtype=current_global.dtype)
             if horizon.ndim == 0:
                 horizon = horizon.expand(batch_size)
-        return self.intent_predictor(current_global, qpos_history, task_cond, horizon)
+        prediction = self.intent_predictor(current_global, qpos_history, task_cond, horizon)
+        return (prediction, attention_weights) if return_attention else prediction
 
     def make_spatial_intent_target(self, current_patch_features, future_patch_features):
         current_regions = fixed_spatial_pool(
@@ -903,7 +956,7 @@ class VLAModel(nn.Module):
             tokens_list.append(regs)
 
         # 2b. Task Condition Token (projected and appended as one extra token)
-        if self.use_task_cond:
+        if self.use_task_cond and self.inject_task_cond:
             assert task_cond is not None, "use_task_cond=True but task_cond was not passed to forward"
             tc = self.task_cond_proj(task_cond).unsqueeze(1)      # (B, 1, hidden_dim)
             tc = tc + self.type_emb_task_cond
@@ -915,9 +968,9 @@ class VLAModel(nn.Module):
             if global_intent is None:
                 raise ValueError("inject_global_intent=True but global_intent was not provided")
             intent_token = self.intent_to_token(global_intent).unsqueeze(1)
-            intent_token = torch.tanh(self.intent_gate).to(global_intent.dtype) * (
-                intent_token + self.type_emb_intent
-            )
+            intent_token = intent_token + self.type_emb_intent
+            if self.intent_use_gate:
+                intent_token = torch.tanh(self.intent_gate).to(global_intent.dtype) * intent_token
             tokens_list.append(intent_token)
 
         if self.use_spatial_intent and self.inject_spatial_intent:
@@ -1041,15 +1094,21 @@ def calc_flow_matching_loss(
 
     # 5. Forward
     global_intent = None
+    intent_attention_weights = None
     if use_global_intent:
         if current_intent_features is None or intent_target_features is None:
             raise ValueError("Global intent training requires current and future patch features")
-        global_intent = model.predict_global_intent(
+        intent_result = model.predict_global_intent(
             current_intent_features,
             qpos_history=qpos_history,
             task_cond=task_cond,
             horizon=intent_horizon,
+            return_attention=model.intent_target_pooling == "current_attention",
         )
+        if model.intent_target_pooling == "current_attention":
+            global_intent, intent_attention_weights = intent_result
+        else:
+            global_intent = intent_result
 
     spatial_intent = None
     if use_spatial_intent:
@@ -1108,7 +1167,8 @@ def calc_flow_matching_loss(
     }
     if use_global_intent:
         intent_target = model.make_global_intent_target(
-            current_intent_features, intent_target_features
+            current_intent_features, intent_target_features,
+            attention_weights=intent_attention_weights,
         )
         loss_intent, intent_info = global_intent_loss(
             global_intent,
@@ -1146,7 +1206,7 @@ def calc_flow_matching_loss(
         "loss_mse": loss_mse.item() if isinstance(loss_mse, torch.Tensor) else loss_mse,
         "loss_future_feat": loss_future_feat.item() if isinstance(loss_future_feat, torch.Tensor) else loss_future_feat,
         "loss_intent": loss_intent.item() if isinstance(loss_intent, torch.Tensor) else loss_intent,
-        "intent_gate": torch.tanh(model.intent_gate).detach().item() if use_global_intent else 0.0,
+        "intent_gate": model.effective_intent_gate().detach().item() if use_global_intent else 0.0,
     }
     info.update(intent_info)
     info["loss_spatial_intent"] = loss_spatial_intent.item()

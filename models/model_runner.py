@@ -99,7 +99,9 @@ class ModelFactory:
                 f"Global Intent ENABLED: inject_into_dit={inject_global_intent}, "
                 f"horizon={intent_horizon}, feature_dim={dino_hidden_size}, "
                 f"gate_init={intent_cfg.get('gate_init', 0.0)}, "
-                f"gate_trainable={intent_cfg.get('gate_trainable', True)}"
+                f"gate_trainable={intent_cfg.get('gate_trainable', True)}, "
+                f"target_pooling={intent_cfg.get('target_pooling', 'mean')}, "
+                f"target_attention_mix={intent_cfg.get('target_attention_mix', 0.5)}"
             )
 
         # ---- Fixed spatial interaction intent ----
@@ -146,6 +148,7 @@ class ModelFactory:
             num_registers=model_cfg.num_registers,
             state_inject_start=0,
             task_cond_dim=task_cond_dim,
+            inject_task_cond=model_cfg.get('inject_task_cond', True),
             fusion_mode=fusion_mode,
             concat_proj_type=concat_proj_type,
             concat_pre_norm=concat_pre_norm,
@@ -163,10 +166,13 @@ class ModelFactory:
             intent_feat_dim=dino_hidden_size,
             intent_gate_init=intent_cfg.get('gate_init', 0.0) if intent_cfg else 0.0,
             intent_gate_trainable=intent_cfg.get('gate_trainable', True) if intent_cfg else True,
+            intent_use_gate=intent_cfg.get('use_gate', True) if intent_cfg else True,
             intent_pooling=intent_cfg.get('pooling', 'mean') if intent_cfg else 'mean',
             intent_pool_hidden_dim=intent_cfg.get('pool_hidden_size', 256) if intent_cfg else 256,
             intent_pool_num_heads=intent_cfg.get('pool_num_heads', 4) if intent_cfg else 4,
             intent_pool_grid_size=(img_h // patch_size, img_w // patch_size),
+            intent_target_pooling=intent_cfg.get('target_pooling', 'mean') if intent_cfg else 'mean',
+            intent_target_attention_mix=intent_cfg.get('target_attention_mix', 0.5) if intent_cfg else 0.5,
             use_spatial_intent=use_spatial_intent,
             inject_spatial_intent=inject_spatial_intent,
             inject_spatial_residual=inject_spatial_residual,
