@@ -306,6 +306,67 @@ class TaskConditionedIntentPool(nn.Module):
         return (output, weights[:, 0, :]) if return_attention else output
 
 
+class LateTaskConditionedIntentPool(nn.Module):
+    """Opt-in causal K-slot read/interact/summarize pool; one output vector.
+
+    Slots have no predefined object/arm semantics. Real future features never
+    enter this module. The legacy single-query pool above is kept unchanged.
+    """
+    def __init__(self, vision_dim, proprio_dim, task_cond_dim, grid_size,
+                 hidden_dim=256, num_heads=4, num_queries=4, interaction_depth=1):
+        super().__init__()
+        if task_cond_dim is None:
+            raise ValueError("late task attention requires VTT task conditioning")
+        if hidden_dim % 4 or hidden_dim % num_heads:
+            raise ValueError("late pool width must be divisible by 4 and num_heads")
+        if num_queries < 2 or interaction_depth < 1:
+            raise ValueError("late pool requires >=2 slots and >=1 interaction block")
+        self.grid_size = tuple(grid_size)
+        self.num_queries = int(num_queries)
+        self.condition = nn.Sequential(
+            nn.LayerNorm(proprio_dim + task_cond_dim),
+            nn.Linear(proprio_dim + task_cond_dim, hidden_dim), nn.GELU())
+        self.slots = nn.Parameter(torch.randn(1, num_queries, hidden_dim) * 0.02)
+        self.patch_proj = nn.Sequential(nn.LayerNorm(vision_dim), nn.Linear(vision_dim, hidden_dim))
+        h, w = self.grid_size
+        y = get_1d_sincos_pos_embed(hidden_dim // 2, h)[0]
+        x = get_1d_sincos_pos_embed(hidden_dim // 2, w)[0]
+        pos = torch.cat((y[:, None].expand(h, w, -1),
+                         x[None].expand(h, w, -1)), -1).reshape(1, h*w, hidden_dim)
+        self.register_buffer("position", pos, persistent=False)
+        self.read_norm = nn.LayerNorm(hidden_dim)
+        self.read = nn.MultiheadAttention(hidden_dim, num_heads, dropout=0.0, batch_first=True)
+        self.interactions = nn.ModuleList([
+            nn.TransformerEncoderLayer(hidden_dim, num_heads, dim_feedforward=hidden_dim * 4,
+                                       dropout=0.0, activation="gelu", batch_first=True,
+                                       norm_first=True)
+            for _ in range(interaction_depth)
+        ])
+        self.summary_query = nn.Parameter(torch.randn(1, 1, hidden_dim) * 0.02)
+        self.summary_norm = nn.LayerNorm(hidden_dim)
+        self.summary = nn.MultiheadAttention(hidden_dim, num_heads, dropout=0.0, batch_first=True)
+        self.output = nn.Linear(hidden_dim, vision_dim)
+
+    def forward(self, patches, state, task_cond, return_attention=False):
+        if task_cond is None:
+            raise ValueError("late task attention requires task_cond")
+        if patches.ndim != 3 or patches.shape[1] != self.position.shape[1]:
+            raise ValueError("late pool patch count does not match configured image grid")
+        q = self.condition(torch.cat((state[:, -1], task_cond), -1)).unsqueeze(1) + self.slots
+        values = self.patch_proj(patches)
+        read, weights = self.read(self.read_norm(q), values + self.position.to(values), values,
+                                  need_weights=return_attention, average_attn_weights=True)
+        u = q + read
+        for block in self.interactions:
+            u = block(u)
+        memory = self.summary_norm(u)
+        summary = self.summary(self.summary_query.expand(patches.shape[0], -1, -1),
+                               memory, memory, need_weights=False)[0]
+        output = self.output(summary[:, 0])
+        # A diagnostic slot-averaged READ map, not attribution after interaction.
+        return (output, weights.mean(dim=1)) if return_attention else output
+
+
 class GlobalIntentPredictor(nn.Module):
     """Predict a global future-change vector from causal, current-time inputs."""
     def __init__(self, vision_dim, proprio_dim, task_cond_dim=None,
@@ -495,6 +556,8 @@ class VLAModel(nn.Module):
                  inject_task_cond=True,
                  intent_target_pooling="mean",
                  intent_target_attention_mix=0.5,
+                 intent_pool_num_queries=4,
+                 intent_pool_interaction_depth=1,
                  ):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -581,6 +644,12 @@ class VLAModel(nn.Module):
                 self.intent_pool = TaskConditionedIntentPool(
                     intent_feat_dim, proprio_dim, task_cond_dim, intent_pool_grid_size,
                     intent_pool_hidden_dim, intent_pool_num_heads,
+                )
+            elif intent_pooling == "task_attention_late":
+                self.intent_pool = LateTaskConditionedIntentPool(
+                    intent_feat_dim, proprio_dim, task_cond_dim, intent_pool_grid_size,
+                    intent_pool_hidden_dim, intent_pool_num_heads,
+                    intent_pool_num_queries, intent_pool_interaction_depth,
                 )
             elif intent_pooling != "mean":
                 raise ValueError(f"Unknown global intent pooling: {intent_pooling}")
@@ -1065,6 +1134,9 @@ def calc_flow_matching_loss(
     use_spatial_intent=False,
     lambda_spatial_intent=0.0,
     spatial_horizon=None,
+    # Optional inference-matched source. Absent by default in all old trainers.
+    source_mean=None,
+    source_noise_scale=None,
 ):
     """
     Flow Matching Loss (with optional Task Condition + Future-Feature Prediction)
@@ -1074,6 +1146,15 @@ def calc_flow_matching_loss(
 
     # 1. Sample noise x0
     x0 = torch.randn_like(x1)
+    if source_mean is not None or source_noise_scale is not None:
+        if source_mean is None or source_noise_scale is None:
+            raise ValueError('source_mean and source_noise_scale must be provided together')
+        if source_mean.shape != x1.shape or source_noise_scale.shape != x1.shape:
+            raise ValueError('source parameters must match normalized action shape')
+        if (not torch.isfinite(source_mean).all() or not torch.isfinite(source_noise_scale).all()
+                or (source_noise_scale < 0).any()):
+            raise ValueError('invalid flow source parameters')
+        x0 = source_mean.detach() + source_noise_scale.detach() * x0
 
     # 2. Sample timestep t
     if time_sampler == "uniform":

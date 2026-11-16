@@ -30,6 +30,8 @@ class Policy:
                  reuse_sigma=1.0, reuse_strength=1.0, policy_seed=None,
                  profile_generation=False):
         self.cfg, self.device = cfg, torch.device(device)
+        if cfg.get('planwam', {}).get('stage') == 'teacher':
+            raise ValueError('Privileged future teacher is not a deployable policy; evaluate its student instead')
         self.prior = TailActionPrior(action_reuse, reuse_sigma, reuse_strength)
         self.generator = None
         if policy_seed is not None:
@@ -47,6 +49,8 @@ class Policy:
         self.action.keep_control_gates_fp32()
         self.wrapper = VLAWrapper(self.vision, self.action, cfg.training.time_sampler, mc.vision_encoder.feat_layers, bool(mc.vision_encoder.include_cls_register), regs, self.device, self.dtype, stats, None, int(mc.future_feat.target_layer)).to(self.device).eval()
         ck = torch.load(checkpoint, map_location="cpu")
+        if ck.get('planwam_stage') == 'teacher':
+            raise ValueError('Cannot evaluate a privileged posterior checkpoint with a causal G2 policy')
         if ck.get("image_rotation_degrees") != IMAGE_ROTATION:
             raise ValueError("Checkpoint uses old/unknown image orientation. Retrain for rotation=180.")
         state = ck.get("model_state", ck.get("model_state_dict", ck)); self.action.load_state_dict(state, strict=True); self.action.eval()

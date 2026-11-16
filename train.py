@@ -7,6 +7,7 @@ import logging
 import argparse
 import time
 import math
+from contextlib import nullcontext
 from datetime import datetime
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
@@ -50,7 +51,12 @@ def seed_worker(worker_id):
 def load_config(config_path):
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")
-    return OmegaConf.load(config_path)
+    cfg = OmegaConf.load(config_path)
+    if cfg.get('planwam'):
+        raise ValueError('RoboTwin PlanWAM configs require train_planwam_robotwin.py '
+                         '(MetaWorld: metaworld_vla/train_planwam.py); '
+                         'train.py would not implement their teacher/initialization protocol.')
+    return cfg
 
 
 class LossLogger:
@@ -156,7 +162,11 @@ if __name__ == "__main__":
                              "Only model weights "
                              "are loaded; optimizer and lr scheduler start fresh from --config. "
                              "Mutually exclusive with --resume.")
+    parser.add_argument('--max_train_steps', type=int, default=None,
+                        help='Optional optimizer-step smoke limit; not for formal training')
     args = parser.parse_args()
+    if args.max_train_steps is not None and args.max_train_steps <= 0:
+        parser.error('--max_train_steps must be positive')
 
     if args.resume and args.init_from:
         raise ValueError("--resume and --init_from are mutually exclusive: "
@@ -167,7 +177,7 @@ if __name__ == "__main__":
     # 1. Environment / Config
     # =========================================================================
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
+    dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float32
     logger.info(f"Using device: {device}, Precision: {dtype}")
 
     config = load_config(args.config)
@@ -205,6 +215,22 @@ if __name__ == "__main__":
     # 2. Dataset / DataLoader
     # =========================================================================
     train_dataset = create_dataset(config, val=False)
+    source_options = None
+    selection_generator = None
+    source_metadata = None
+    if config.training.get('action_prior', {}).get('enabled', False):
+        from metaworld_vla.training_prior import prior_options, PriorDataset, prepare_source_batch, sha256
+        from robotwin_action_prior import RobotWinPriorAdapter
+        source_options = prior_options(config)
+        if args.init_from:
+            raise ValueError('new full C/G2/R experiments start from scratch; omit --init_from')
+        selection_generator = torch.Generator().manual_seed(source_options['selection_seed'])
+        source_metadata = dict(options=source_options, stats_sha256=sha256(args.norm_stats_path))
+        if source_options['mode'] != 'cold':
+            train_dataset = PriorDataset(RobotWinPriorAdapter(train_dataset), config, args.norm_stats_path, source_options)
+        if source_options['mode'] == 'tail':
+            source_metadata['cache_manifest_sha256'] = sha256(os.path.join(source_options['cache_dir'], 'manifest.json'))
+        logger.info(f'Flow source protocol: {source_metadata}')
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -387,6 +413,10 @@ if __name__ == "__main__":
             logger.warning("Checkpoint has no RNG state; resumed execution is not bitwise reproducible.")
         logger.info(f"Resumed at epoch={start_epoch}, global_step={global_step}, "
                     f"lr={optimizer.param_groups[0]['lr']:.2e}")
+        if source_options is not None:
+            if ckpt.get('source_protocol') != source_metadata:
+                raise ValueError('resume prior protocol/cache/stats mismatch')
+            selection_generator.set_state(ckpt['source_selection_rng'])
 
     # =========================================================================
     # 6. Training Loop
@@ -414,6 +444,8 @@ if __name__ == "__main__":
         start_time = time.time()
 
         for step, batch in enumerate(train_dataloader):
+            if source_options is not None and source_options['mode'] != 'cold':
+                modified_fraction = prepare_source_batch(batch, source_options, selection_generator)
             # Use the actual divisor for the shorter final accumulation group,
             # so its gradient magnitude matches a regular optimizer update.
             accumulation_divisor = (
@@ -421,7 +453,8 @@ if __name__ == "__main__":
                 if trailing_micro_batches and step >= len(train_dataloader) - trailing_micro_batches
                 else grad_accum_steps
             )
-            with torch.amp.autocast('cuda', dtype=dtype):
+            amp_context = torch.amp.autocast('cuda', dtype=dtype) if device.type == 'cuda' else nullcontext()
+            with amp_context:
                 loss, info_dic = model(batch)
                 loss = loss / accumulation_divisor
 
@@ -464,12 +497,15 @@ if __name__ == "__main__":
                             f"SpatialGate: {info_dic.get('spatial_gate', 0.0):.6f} "
                         )
                     logger.info(log_msg)
+                if args.max_train_steps is not None and global_step >= args.max_train_steps:
+                    break
 
-        avg_loss = epoch_loss / len(train_dataloader)
+        avg_loss = epoch_loss / (step + 1)
         elapsed = time.time() - start_time
         logger.info(f"=== Epoch {epoch+1} Completed. Avg Loss: {avg_loss:.4f} | Time: {elapsed:.1f}s ===")
 
-        if (epoch + 1) % save_interval_epoch == 0 or (epoch + 1) == epochs:
+        if ((epoch + 1) % save_interval_epoch == 0 or (epoch + 1) == epochs
+                or (args.max_train_steps is not None and global_step >= args.max_train_steps)):
             ckpt_name = f"checkpoint_epoch_{epoch+1}.pt"
             ckpt_path = os.path.join(run_save_dir, ckpt_name)
             save_dict = {
@@ -486,7 +522,12 @@ if __name__ == "__main__":
                 'cuda_rng_state_all': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
                 'dataloader_generator_state': loader_generator.get_state(),
             }
+            if source_options is not None:
+                save_dict['source_protocol'] = source_metadata
+                save_dict['source_selection_rng'] = selection_generator.get_state()
             torch.save(save_dict, ckpt_path)
             logger.info(f"Saved checkpoint to {ckpt_path}")
+        if args.max_train_steps is not None and global_step >= args.max_train_steps:
+            break
 
     logger.info("Training Complete.")

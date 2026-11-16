@@ -66,6 +66,16 @@ class RobotWinInference:
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Config not found: {config_path}")
         self.config = OmegaConf.load(config_path)
+        self.action_prior = None
+        reuse_cfg = self.config.inference.get('action_reuse', {})
+        if reuse_cfg.get('enabled', False):
+            from metaworld_vla.action_reuse import TailActionPrior
+            self.action_prior = TailActionPrior(True, float(reuse_cfg.get('sigma', .5)),
+                                                float(reuse_cfg.get('strength', 1.0)))
+        self.policy_seed = self.config.inference.get('policy_seed', None)
+        self.noise_generator = None
+        if self.policy_seed is not None:
+            self.noise_generator = torch.Generator(device=device).manual_seed(int(self.policy_seed))
 
         self.num_inference_steps = self.config.common.num_inference_steps
         self.action_execution_horizon = self.config.common.action_execution_horizon
@@ -125,6 +135,9 @@ class RobotWinInference:
 
         # Load checkpoint
         checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+        if checkpoint.get('planwam_stage') == 'teacher':
+            raise ValueError('PlanWAM posterior teacher needs future observations and cannot be evaluated online; '
+                             'use the action_only/student checkpoint instead.')
         state_dict = checkpoint['model_state_dict']
         msg = self.model.action_model.load_state_dict(state_dict, strict=True)
         logger.info(f"Loaded Action Model weights. Missing: {len(msg.missing_keys)}, "
@@ -157,6 +170,10 @@ class RobotWinInference:
     def set_task(self, task_name: str):
         """Load the precomputed condition vector of the given task.
         Call once before each task starts during evaluation."""
+        if self.noise_generator is not None:
+            self.noise_generator.manual_seed(int(self.policy_seed))
+        if self.action_prior is not None:
+            self.reset()
         if not self.use_task_cond:
             return
         if self.task_cond_dir is None:
@@ -172,6 +189,8 @@ class RobotWinInference:
         """Reset state: clear the Processor history buffer and the action queue"""
         self.processor.reset()
         self.action_queue.clear()
+        if self.action_prior is not None:
+            self.action_prior.reset()
 
     @torch.no_grad()
     def _predict_chunk(self, observation: Dict[str, Any], instruction: str = "") -> np.ndarray:
@@ -222,7 +241,10 @@ class RobotWinInference:
         action_len = self.config.common.action_chunk_size
         action_dim = self.config.common.action_dim
 
-        x_t = torch.randn((B, action_len, action_dim), device=self.device, dtype=self.dtype)
+        noise_args = {} if self.noise_generator is None else {'generator': self.noise_generator}
+        x_t = torch.randn((B, action_len, action_dim), device=self.device, dtype=self.dtype, **noise_args)
+        if self.action_prior is not None:
+            x_t = self.action_prior.source(x_t)
         steps = torch.linspace(0, 1, self.num_inference_steps + 1, device=self.device, dtype=self.dtype)
 
         # 4. ODE Solver
@@ -245,6 +267,8 @@ class RobotWinInference:
 
             x_t = x_t + pred_v * dt
 
+        if self.action_prior is not None:
+            self.action_prior.remember(x_t)
         # 5. Denormalize
         action_seq = self.model.denormalize_action(x_t)
         action_np = action_seq[0].float().cpu().numpy()
@@ -273,7 +297,10 @@ class RobotWinInference:
             for act in valid_actions:
                 self.action_queue.append(act)
 
-        return self.action_queue.popleft()
+        action = self.action_queue.popleft()
+        if self.action_prior is not None:
+            self.action_prior.advance()
+        return action
 
 
 class RobotWinInferenceProcessor:

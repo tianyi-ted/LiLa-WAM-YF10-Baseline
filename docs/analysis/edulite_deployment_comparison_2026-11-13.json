@@ -1,0 +1,2334 @@
+{
+  "groups": {
+    "A_off": {
+      "metrics": {
+        "target_to_filtered_command_rad": {
+          "count": 2547,
+          "min": 0.002367258071899414,
+          "p50": 0.04045522212982178,
+          "p95": 0.13667060136795045,
+          "max": 0.25858592987060547
+        },
+        "emitted_boundary_rad": {
+          "count": 158,
+          "min": 0.0078125,
+          "p50": 0.119140625,
+          "p95": 0.2734375,
+          "max": 0.34375
+        },
+        "raw_boundary_rad": {
+          "count": 158,
+          "min": 0.0078125,
+          "p50": 0.119140625,
+          "p95": 0.2734375,
+          "max": 0.34375
+        },
+        "smooth_max_step_rad": {
+          "count": 0
+        },
+        "fit_mae_rad": {
+          "count": 0
+        },
+        "fit_compute_s": {
+          "count": 0
+        },
+        "observation_age_s": {
+          "count": 158,
+          "min": 0.2992367479018867,
+          "p50": 0.30140193994157016,
+          "p95": 0.30284531144425275,
+          "max": 0.30395327508449554
+        },
+        "conditioning_s": {
+          "count": 0
+        },
+        "background_inference_s": {
+          "count": 158,
+          "min": 0.16008016606792808,
+          "p50": 0.18015206605196,
+          "p95": 0.20322269035968932,
+          "max": 0.21981952711939812
+        },
+        "following_error_rad": {
+          "count": 8485,
+          "min": 0.0010284395167683494,
+          "p50": 0.008173888058824685,
+          "p95": 0.017973071329759657,
+          "max": 0.028844334465238486
+        },
+        "action_interval_s": {
+          "count": 2544,
+          "min": 0.029662501998245716,
+          "p50": 0.033278158865869045,
+          "p95": 0.03509834960568696,
+          "max": 0.037400081753730774
+        },
+        "control_interval_s": {
+          "count": 8485,
+          "min": 0.0045550549402832985,
+          "p50": 0.009999833069741726,
+          "p95": 0.010203674994409084,
+          "max": 0.015452451072633266
+        },
+        "background_actions_selected": {
+          "count": 0
+        },
+        "aligned_start_index": {
+          "count": 0
+        },
+        "alignment_residual_age_s": {
+          "count": 0
+        },
+        "aligned_raw_start_to_command_max_rad": {
+          "count": 0
+        },
+        "aligned_start_to_command_max_rad": {
+          "count": 0
+        },
+        "alignment_conditioning_attempts": {
+          "count": 0
+        },
+        "startup_refresh_observation_age_s": {
+          "count": 0
+        },
+        "startup_refresh_infer_s": {
+          "count": 0
+        },
+        "background_phase_error_s": {
+          "count": 2499,
+          "min": 0.2983292364515364,
+          "p50": 0.30059867445379496,
+          "p95": 0.3021926885470748,
+          "max": 0.30416503502056
+        },
+        "logged_alignment_phase_error_s": {
+          "count": 0
+        },
+        "boundary_target_slope_change_rad_s": {
+          "count": 156,
+          "min": 0.015308052929643857,
+          "p50": 0.5863140599369749,
+          "p95": 3.0964192105997417,
+          "max": 3.4077112573106403
+        },
+        "boundary_target_direction_cos": {
+          "count": 146,
+          "min": -0.9961847639696397,
+          "p50": -0.15221621983595812,
+          "p95": 0.9655265002759273,
+          "max": 0.9976515586430428
+        },
+        "boundary_control_speed_min_ratio_150ms": {
+          "count": 133,
+          "min": 0.05366722455297775,
+          "p50": 0.4910493105772543,
+          "p95": 0.6961766115738184,
+          "max": 1.2388191478506352
+        },
+        "interior_target_direction_cos": {
+          "count": 1624,
+          "min": -0.999929445357532,
+          "p50": 0.9432418993978089,
+          "p95": 0.995208978933974,
+          "max": 0.9999048584436196
+        }
+      },
+      "counts": {
+        "background_chunks": 158,
+        "fallback_background_chunks": 0,
+        "warning_actions": 155,
+        "model_updates": 2547,
+        "queue_wait_events": 0,
+        "schedule_resets": 0,
+        "time_alignment_rejected_chunks": 0,
+        "duration_ms": 84850,
+        "phase_background_over_one_tick": 2499,
+        "timeout_cycles_before_first_action": 0,
+        "timeout_cycles_during_action_span": 0,
+        "timeout_cycles_after_last_action": 0
+      },
+      "per_run": [
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask/run_20261113_153631",
+          "stop_reason": "operator_stop",
+          "duration_s": 27.912200756836683,
+          "background_chunks": 52,
+          "boundary_rad": {
+            "count": 52,
+            "min": 0.0078125,
+            "p50": 0.10546875,
+            "p95": 0.25703124999999993,
+            "max": 0.32421875
+          },
+          "inference_s": {
+            "count": 52,
+            "min": 0.16008016606792808,
+            "p50": 0.17915393155999482,
+            "p95": 0.19930192586034537,
+            "max": 0.20946675725281239
+          },
+          "following_error_rad": {
+            "count": 2791,
+            "min": 0.0010284395167683494,
+            "p50": 0.007845155787065905,
+            "p95": 0.018794397040143074,
+            "max": 0.025038065956134448
+          },
+          "phase_s": {
+            "count": 822,
+            "min": 0.2983292364515364,
+            "p50": 0.3006989620625973,
+            "p95": 0.3022455285768956,
+            "max": 0.30416503502056
+          },
+          "direction_reversal_count": 24,
+          "direction_eligible_count": 50,
+          "slowdown_count": 25,
+          "slowdown_eligible_count": 42,
+          "warnings": 44,
+          "fallbacks": 0,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask/run_20261113_153713",
+          "stop_reason": "operator_stop",
+          "duration_s": 26.421676085796207,
+          "background_chunks": 49,
+          "boundary_rad": {
+            "count": 49,
+            "min": 0.0078125,
+            "p50": 0.109375,
+            "p95": 0.2890624999999999,
+            "max": 0.34375
+          },
+          "inference_s": {
+            "count": 49,
+            "min": 0.16249487409368157,
+            "p50": 0.17832010705024004,
+            "p95": 0.20128139732405542,
+            "max": 0.21981952711939812
+          },
+          "following_error_rad": {
+            "count": 2642,
+            "min": 0.0011607505646997751,
+            "p50": 0.008045224136255621,
+            "p95": 0.01648693214271828,
+            "max": 0.028844334465238486
+          },
+          "phase_s": {
+            "count": 777,
+            "min": 0.298537524882704,
+            "p50": 0.300548680126667,
+            "p95": 0.302270641643554,
+            "max": 0.3036562604829669
+          },
+          "direction_reversal_count": 27,
+          "direction_eligible_count": 45,
+          "slowdown_count": 18,
+          "slowdown_eligible_count": 43,
+          "warnings": 43,
+          "fallbacks": 0,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask/run_20261113_153915",
+          "stop_reason": "operator_stop",
+          "duration_s": 30.51595740299672,
+          "background_chunks": 57,
+          "boundary_rad": {
+            "count": 57,
+            "min": 0.0078125,
+            "p50": 0.140625,
+            "p95": 0.25312499999999993,
+            "max": 0.3203125
+          },
+          "inference_s": {
+            "count": 57,
+            "min": 0.16459538228809834,
+            "p50": 0.18144955718889832,
+            "p95": 0.20934183439239856,
+            "max": 0.21733405301347375
+          },
+          "following_error_rad": {
+            "count": 3052,
+            "min": 0.001494949604346596,
+            "p50": 0.008661772275613433,
+            "p95": 0.01808124443585913,
+            "max": 0.026658228367477887
+          },
+          "phase_s": {
+            "count": 900,
+            "min": 0.2986003370024264,
+            "p50": 0.3005628746468574,
+            "p95": 0.30200372263789177,
+            "max": 0.3036716706119478
+          },
+          "direction_reversal_count": 32,
+          "direction_eligible_count": 51,
+          "slowdown_count": 29,
+          "slowdown_eligible_count": 48,
+          "warnings": 68,
+          "fallbacks": 0,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "run": "run_20261113_153631",
+          "count": 44,
+          "first_time_s": 0.010575242340564728,
+          "last_time_s": 27.779003143310547,
+          "affected_joints": {
+            "L1": 21,
+            "L2": 35,
+            "L3": 25,
+            "L4": 2,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.24421873688697815,
+          "max_selected_step_rad": 0.32421875,
+          "max_safe_step_rad": 0.09999999403953552
+        },
+        {
+          "run": "run_20261113_153713",
+          "count": 43,
+          "first_time_s": 0.537685215473175,
+          "last_time_s": 26.1695556640625,
+          "affected_joints": {
+            "L1": 20,
+            "L2": 35,
+            "L3": 31,
+            "L4": 5,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.26374995708465576,
+          "max_selected_step_rad": 0.34375,
+          "max_safe_step_rad": 0.09999999403953552
+        },
+        {
+          "run": "run_20261113_153915",
+          "count": 68,
+          "first_time_s": 0.005890914238989353,
+          "last_time_s": 30.408218383789062,
+          "affected_joints": {
+            "L1": 18,
+            "L2": 58,
+            "L3": 45,
+            "L4": 5,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.24031245708465576,
+          "max_selected_step_rad": 0.3203125,
+          "max_safe_step_rad": 0.09999999403953552
+        }
+      ],
+      "offset_counts": {},
+      "speed_ratios_median_50ms_bins": [
+        0.9657344356811839,
+        0.7671651188118854,
+        0.5884049768648679,
+        0.44442912079104063,
+        0.4020665913920835,
+        0.42311931129650626
+      ],
+      "first_18s_boundary_comparison": {
+        "direction_eligible_count": 93,
+        "direction_reversal_fraction": 0.5053763440860215,
+        "slowdown_eligible_count": 85,
+        "speed_drop_below_half_fraction": 0.5882352941176471,
+        "speed_ratios_median_50ms_bins": [
+          0.9286099251615603,
+          0.7350626003501193,
+          0.5611095052236863,
+          0.42398264861097734,
+          0.3360068790122824,
+          0.37724808777673313
+        ]
+      },
+      "boundary_direction_reversal_fraction": 0.5684931506849316,
+      "interior_direction_reversal_fraction": 0.11145320197044335,
+      "boundary_speed_drop_below_half_fraction": 0.5413533834586466,
+      "warning_fraction": 0.060855908912446015,
+      "settings_identical_within_group": true
+    },
+    "B_weighted": {
+      "metrics": {
+        "target_to_filtered_command_rad": {
+          "count": 2776,
+          "min": 0.0009399205446243286,
+          "p50": 0.03652709722518921,
+          "p95": 0.1387462615966797,
+          "max": 0.2748148441314697
+        },
+        "emitted_boundary_rad": {
+          "count": 171,
+          "min": 0.0016460418701171875,
+          "p50": 0.04030412435531616,
+          "p95": 0.11131502687931061,
+          "max": 0.15149283409118652
+        },
+        "raw_boundary_rad": {
+          "count": 171,
+          "min": 0.007514480501413345,
+          "p50": 0.10989737510681152,
+          "p95": 0.27995723485946655,
+          "max": 0.37446558475494385
+        },
+        "smooth_max_step_rad": {
+          "count": 171,
+          "min": 0.0038912745085034617,
+          "p50": 0.04544616613407437,
+          "p95": 0.12325289976039208,
+          "max": 0.1633392688352917
+        },
+        "fit_mae_rad": {
+          "count": 171,
+          "min": 0.0,
+          "p50": 0.00413327692238217,
+          "p95": 0.011560290071265342,
+          "max": 0.014628136929454319
+        },
+        "fit_compute_s": {
+          "count": 0
+        },
+        "observation_age_s": {
+          "count": 171,
+          "min": 0.2994414116255939,
+          "p50": 0.3016107971780002,
+          "p95": 0.3029916351661086,
+          "max": 0.3036779388785362
+        },
+        "conditioning_s": {
+          "count": 0
+        },
+        "background_inference_s": {
+          "count": 172,
+          "min": 0.16213748883455992,
+          "p50": 0.1784459489863366,
+          "p95": 0.2068401793949306,
+          "max": 0.22048573661595583
+        },
+        "following_error_rad": {
+          "count": 9249,
+          "min": 0.0009167738241389146,
+          "p50": 0.008678654347827802,
+          "p95": 0.017348732417110525,
+          "max": 0.02667796012543011
+        },
+        "action_interval_s": {
+          "count": 2773,
+          "min": 0.02834390802308917,
+          "p50": 0.03329386794939637,
+          "p95": 0.03504682667553425,
+          "max": 0.03789987927302718
+        },
+        "control_interval_s": {
+          "count": 9249,
+          "min": 0.005761277861893177,
+          "p50": 0.009999790694564581,
+          "p95": 0.010166500229388475,
+          "max": 0.014242029748857021
+        },
+        "background_actions_selected": {
+          "count": 0
+        },
+        "aligned_start_index": {
+          "count": 0
+        },
+        "alignment_residual_age_s": {
+          "count": 0
+        },
+        "aligned_raw_start_to_command_max_rad": {
+          "count": 0
+        },
+        "aligned_start_to_command_max_rad": {
+          "count": 0
+        },
+        "alignment_conditioning_attempts": {
+          "count": 0
+        },
+        "startup_refresh_observation_age_s": {
+          "count": 0
+        },
+        "startup_refresh_infer_s": {
+          "count": 0
+        },
+        "background_phase_error_s": {
+          "count": 2728,
+          "min": 0.2980211302638054,
+          "p50": 0.300529379863292,
+          "p95": 0.3021606135647744,
+          "max": 0.3045989410020411
+        },
+        "logged_alignment_phase_error_s": {
+          "count": 0
+        },
+        "boundary_target_slope_change_rad_s": {
+          "count": 171,
+          "min": 0.05814417171521318,
+          "p50": 1.2832287559073838,
+          "p95": 3.310025957617782,
+          "max": 3.4695601121550785
+        },
+        "boundary_target_direction_cos": {
+          "count": 162,
+          "min": -0.9993421540343903,
+          "p50": -0.9587366979699871,
+          "p95": -0.17518689048019764,
+          "max": 0.6542307641593751
+        },
+        "boundary_control_speed_min_ratio_150ms": {
+          "count": 147,
+          "min": 0.08066052851232891,
+          "p50": 0.48582561048013845,
+          "p95": 0.8868099137479133,
+          "max": 1.666974804750725
+        },
+        "interior_target_direction_cos": {
+          "count": 1667,
+          "min": -0.9997705954753967,
+          "p50": 0.912206276106763,
+          "p95": 0.9948083791876929,
+          "max": 0.999759371439322
+        }
+      },
+      "counts": {
+        "background_chunks": 171,
+        "fallback_background_chunks": 4,
+        "warning_actions": 105,
+        "model_updates": 2776,
+        "queue_wait_events": 0,
+        "schedule_resets": 0,
+        "time_alignment_rejected_chunks": 0,
+        "duration_ms": 92498,
+        "phase_background_over_one_tick": 2728,
+        "timeout_cycles_before_first_action": 0,
+        "timeout_cycles_during_action_span": 0,
+        "timeout_cycles_after_last_action": 0
+      },
+      "per_run": [
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask/run_20261113_161246",
+          "stop_reason": "operator_stop",
+          "duration_s": 31.891607522964478,
+          "background_chunks": 59,
+          "boundary_rad": {
+            "count": 59,
+            "min": 0.0016460418701171875,
+            "p50": 0.02191305160522461,
+            "p95": 0.12093344032764433,
+            "max": 0.14246439933776855
+          },
+          "inference_s": {
+            "count": 59,
+            "min": 0.16259316494688392,
+            "p50": 0.1786381988786161,
+            "p95": 0.21065644808113573,
+            "max": 0.2118956409394741
+          },
+          "following_error_rad": {
+            "count": 3189,
+            "min": 0.0010748162418783291,
+            "p50": 0.007738570944584411,
+            "p95": 0.01677691079709018,
+            "max": 0.02606584009810664
+          },
+          "phase_s": {
+            "count": 941,
+            "min": 0.2980211302638054,
+            "p50": 0.3005300876684487,
+            "p95": 0.3022478795610368,
+            "max": 0.30394440703094006
+          },
+          "direction_reversal_count": 56,
+          "direction_eligible_count": 57,
+          "slowdown_count": 28,
+          "slowdown_eligible_count": 49,
+          "warnings": 31,
+          "fallbacks": 1,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask/run_20261113_161333",
+          "stop_reason": "operator_stop",
+          "duration_s": 27.051885111723095,
+          "background_chunks": 50,
+          "boundary_rad": {
+            "count": 50,
+            "min": 0.0036856532096862793,
+            "p50": 0.056957244873046875,
+            "p95": 0.11145974546670913,
+            "max": 0.15149283409118652
+          },
+          "inference_s": {
+            "count": 50,
+            "min": 0.16239739209413528,
+            "p50": 0.1785375284962356,
+            "p95": 0.20312461107969282,
+            "max": 0.22048573661595583
+          },
+          "following_error_rad": {
+            "count": 2705,
+            "min": 0.0011640968967224375,
+            "p50": 0.009264753101408507,
+            "p95": 0.016982463275131313,
+            "max": 0.026480607529874023
+          },
+          "phase_s": {
+            "count": 796,
+            "min": 0.29851509956642985,
+            "p50": 0.3004118937533349,
+            "p95": 0.30215526302345097,
+            "max": 0.3045989410020411
+          },
+          "direction_reversal_count": 44,
+          "direction_eligible_count": 47,
+          "slowdown_count": 20,
+          "slowdown_eligible_count": 44,
+          "warnings": 48,
+          "fallbacks": 1,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask/run_20261113_161414",
+          "stop_reason": "operator_stop",
+          "duration_s": 33.55375800374895,
+          "background_chunks": 62,
+          "boundary_rad": {
+            "count": 62,
+            "min": 0.0034052059054374695,
+            "p50": 0.042385801672935486,
+            "p95": 0.10204617083072658,
+            "max": 0.11859667301177979
+          },
+          "inference_s": {
+            "count": 63,
+            "min": 0.16213748883455992,
+            "p50": 0.17695496696978807,
+            "p95": 0.2066231752745807,
+            "max": 0.21973404195159674
+          },
+          "following_error_rad": {
+            "count": 3355,
+            "min": 0.0009167738241389146,
+            "p50": 0.008915063065501938,
+            "p95": 0.01791955442282469,
+            "max": 0.02667796012543011
+          },
+          "phase_s": {
+            "count": 991,
+            "min": 0.29826604621484876,
+            "p50": 0.30063707660883665,
+            "p95": 0.3021454126574099,
+            "max": 0.3033388499170542
+          },
+          "direction_reversal_count": 56,
+          "direction_eligible_count": 58,
+          "slowdown_count": 32,
+          "slowdown_eligible_count": 54,
+          "warnings": 26,
+          "fallbacks": 2,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "run": "run_20261113_161246",
+          "count": 31,
+          "first_time_s": 0.5396976470947266,
+          "last_time_s": 31.504018783569336,
+          "affected_joints": {
+            "L1": 11,
+            "L2": 22,
+            "L3": 19,
+            "L4": 0,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.13710379600524902,
+          "max_selected_step_rad": 0.1546393632888794,
+          "max_safe_step_rad": 0.08000004291534424
+        },
+        {
+          "run": "run_20261113_161333",
+          "count": 48,
+          "first_time_s": 0.5371932983398438,
+          "last_time_s": 26.702756881713867,
+          "affected_joints": {
+            "L1": 11,
+            "L2": 41,
+            "L3": 24,
+            "L4": 0,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.154832124710083,
+          "max_selected_step_rad": 0.1633392572402954,
+          "max_safe_step_rad": 0.08000004291534424
+        },
+        {
+          "run": "run_20261113_161414",
+          "count": 26,
+          "first_time_s": 0.5689282417297363,
+          "last_time_s": 31.50372314453125,
+          "affected_joints": {
+            "L1": 5,
+            "L2": 21,
+            "L3": 10,
+            "L4": 0,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.08739416301250458,
+          "max_selected_step_rad": 0.1310126781463623,
+          "max_safe_step_rad": 0.08000004291534424
+        }
+      ],
+      "offset_counts": {},
+      "speed_ratios_median_50ms_bins": [
+        0.9794039274965014,
+        0.7779820505518104,
+        0.6540471024874729,
+        0.49207407803237424,
+        0.43045732011928173,
+        0.46037452226822545
+      ],
+      "first_18s_boundary_comparison": {
+        "direction_eligible_count": 92,
+        "direction_reversal_fraction": 0.9891304347826086,
+        "slowdown_eligible_count": 84,
+        "speed_drop_below_half_fraction": 0.5952380952380952,
+        "speed_ratios_median_50ms_bins": [
+          0.9607822465100897,
+          0.7261953964829444,
+          0.5585620309824723,
+          0.4881552508986249,
+          0.3910491082339887,
+          0.4583763156674976
+        ]
+      },
+      "boundary_direction_reversal_fraction": 0.9629629629629629,
+      "interior_direction_reversal_fraction": 0.20815836832633472,
+      "boundary_speed_drop_below_half_fraction": 0.54421768707483,
+      "warning_fraction": 0.037824207492795386,
+      "settings_identical_within_group": true
+    },
+    "C_latest": {
+      "metrics": {
+        "target_to_filtered_command_rad": {
+          "count": 2934,
+          "min": 0.0014759302139282227,
+          "p50": 0.028464339673519135,
+          "p95": 0.10932466387748718,
+          "max": 0.2115647792816162
+        },
+        "emitted_boundary_rad": {
+          "count": 224,
+          "min": 0.0018687844276428223,
+          "p50": 0.027341604232788086,
+          "p95": 0.08089617043733596,
+          "max": 0.1027001142501831
+        },
+        "raw_boundary_rad": {
+          "count": 224,
+          "min": 0.004876911640167236,
+          "p50": 0.07652890682220459,
+          "p95": 0.2121337443590164,
+          "max": 0.25
+        },
+        "smooth_max_step_rad": {
+          "count": 224,
+          "min": 0.0036550694440217607,
+          "p50": 0.031044765132343888,
+          "p95": 0.08725517686543077,
+          "max": 0.11482941075531095
+        },
+        "fit_mae_rad": {
+          "count": 224,
+          "min": 0.0,
+          "p50": 0.003414253399702207,
+          "p95": 0.009798567794157585,
+          "max": 0.012808899619106603
+        },
+        "fit_compute_s": {
+          "count": 224,
+          "min": 0.0002253311686217785,
+          "p50": 0.0002533977385610342,
+          "p95": 0.00039195769932121033,
+          "max": 0.00043780216947197914
+        },
+        "observation_age_s": {
+          "count": 224,
+          "min": 0.16810798272490501,
+          "p50": 0.20309339184314013,
+          "p95": 0.23627747492864729,
+          "max": 0.2676398642361164
+        },
+        "conditioning_s": {
+          "count": 224,
+          "min": 0.0010633156634867191,
+          "p50": 0.0011268281377851963,
+          "p95": 0.001855919137597084,
+          "max": 0.0021405350416898727
+        },
+        "background_inference_s": {
+          "count": 224,
+          "min": 0.15689790481701493,
+          "p50": 0.17976966057904065,
+          "p95": 0.21100824039895089,
+          "max": 0.23052472481504083
+        },
+        "following_error_rad": {
+          "count": 9774,
+          "min": 0.000906779062082538,
+          "p50": 0.00867123803577352,
+          "p95": 0.01733758660246481,
+          "max": 0.026578328977746812
+        },
+        "action_interval_s": {
+          "count": 2931,
+          "min": 0.02745946403592825,
+          "p50": 0.0332505009137094,
+          "p95": 0.03556433808989823,
+          "max": 0.03979909187182784
+        },
+        "control_interval_s": {
+          "count": 9774,
+          "min": 0.005619832314550877,
+          "p50": 0.00999973900616169,
+          "p95": 0.010235878266394138,
+          "max": 0.014435775112360716
+        },
+        "background_actions_selected": {
+          "count": 221,
+          "min": 12.0,
+          "p50": 13.0,
+          "p95": 14.0,
+          "max": 15.0
+        },
+        "aligned_start_index": {
+          "count": 0
+        },
+        "alignment_residual_age_s": {
+          "count": 0
+        },
+        "aligned_raw_start_to_command_max_rad": {
+          "count": 0
+        },
+        "aligned_start_to_command_max_rad": {
+          "count": 0
+        },
+        "alignment_conditioning_attempts": {
+          "count": 0
+        },
+        "startup_refresh_observation_age_s": {
+          "count": 0
+        },
+        "startup_refresh_infer_s": {
+          "count": 0
+        },
+        "background_phase_error_s": {
+          "count": 2895,
+          "min": 0.16539213014766574,
+          "p50": 0.20062159514054656,
+          "p95": 0.234131639264524,
+          "max": 0.26780335837975144
+        },
+        "logged_alignment_phase_error_s": {
+          "count": 0
+        },
+        "boundary_target_slope_change_rad_s": {
+          "count": 222,
+          "min": 0.060824589498343705,
+          "p50": 1.0452806713055942,
+          "p95": 2.9382944611069286,
+          "max": 3.4977720273726693
+        },
+        "boundary_target_direction_cos": {
+          "count": 201,
+          "min": -0.9995390465243889,
+          "p50": -0.9643078206167403,
+          "p95": -0.09573762765329107,
+          "max": 0.9584149073586352
+        },
+        "boundary_control_speed_min_ratio_150ms": {
+          "count": 182,
+          "min": 0.09140029282200784,
+          "p50": 0.48586301118783143,
+          "p95": 0.7953201222914441,
+          "max": 2.0916711770888257
+        },
+        "interior_target_direction_cos": {
+          "count": 1543,
+          "min": -0.9997385386993427,
+          "p50": 0.9096096376600076,
+          "p95": 0.9948592738524042,
+          "max": 1.0
+        }
+      },
+      "counts": {
+        "background_chunks": 224,
+        "fallback_background_chunks": 6,
+        "warning_actions": 41,
+        "model_updates": 2934,
+        "queue_wait_events": 0,
+        "schedule_resets": 0,
+        "time_alignment_rejected_chunks": 0,
+        "duration_ms": 97755,
+        "phase_background_over_one_tick": 2895,
+        "timeout_cycles_before_first_action": 0,
+        "timeout_cycles_during_action_span": 0,
+        "timeout_cycles_after_last_action": 0
+      },
+      "per_run": [
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_latest/run_20261113_172501",
+          "stop_reason": "operator_stop",
+          "duration_s": 32.41353916237131,
+          "background_chunks": 75,
+          "boundary_rad": {
+            "count": 75,
+            "min": 0.0018687844276428223,
+            "p50": 0.023920059204101562,
+            "p95": 0.083558851480484,
+            "max": 0.1027001142501831
+          },
+          "inference_s": {
+            "count": 75,
+            "min": 0.15689790481701493,
+            "p50": 0.17973567405715585,
+            "p95": 0.20515401870943603,
+            "max": 0.23052472481504083
+          },
+          "following_error_rad": {
+            "count": 3241,
+            "min": 0.000906779062082538,
+            "p50": 0.008222948481340475,
+            "p95": 0.01604454127979804,
+            "max": 0.026578328977746812
+          },
+          "phase_s": {
+            "count": 960,
+            "min": 0.16539213014766574,
+            "p50": 0.20038098515942693,
+            "p95": 0.23321376792155207,
+            "max": 0.26780335837975144
+          },
+          "direction_reversal_count": 64,
+          "direction_eligible_count": 66,
+          "slowdown_count": 35,
+          "slowdown_eligible_count": 59,
+          "warnings": 22,
+          "fallbacks": 2,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_latest/run_20261113_172546",
+          "stop_reason": "operator_stop",
+          "duration_s": 27.014999203383923,
+          "background_chunks": 61,
+          "boundary_rad": {
+            "count": 61,
+            "min": 0.0029221177101135254,
+            "p50": 0.03269469738006592,
+            "p95": 0.07941454648971558,
+            "max": 0.086209237575531
+          },
+          "inference_s": {
+            "count": 61,
+            "min": 0.16247315658256412,
+            "p50": 0.18150492198765278,
+            "p95": 0.21141723403707147,
+            "max": 0.2277377531863749
+          },
+          "following_error_rad": {
+            "count": 2701,
+            "min": 0.000990192047753087,
+            "p50": 0.008766465836723247,
+            "p95": 0.016856621293469543,
+            "max": 0.02483691636596186
+          },
+          "phase_s": {
+            "count": 798,
+            "min": 0.16550451098009944,
+            "p50": 0.20071354717947543,
+            "p95": 0.23428281475789844,
+            "max": 0.23806452890858054
+          },
+          "direction_reversal_count": 51,
+          "direction_eligible_count": 55,
+          "slowdown_count": 27,
+          "slowdown_eligible_count": 50,
+          "warnings": 13,
+          "fallbacks": 2,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_latest/run_20261113_172628",
+          "stop_reason": "operator_stop",
+          "duration_s": 38.32551212608814,
+          "background_chunks": 88,
+          "boundary_rad": {
+            "count": 88,
+            "min": 0.002267003059387207,
+            "p50": 0.027225971221923828,
+            "p95": 0.07159034907817836,
+            "max": 0.08763056993484497
+          },
+          "inference_s": {
+            "count": 88,
+            "min": 0.1623858748935163,
+            "p50": 0.17934058513492346,
+            "p95": 0.21035106724593788,
+            "max": 0.22808004915714264
+          },
+          "following_error_rad": {
+            "count": 3832,
+            "min": 0.0015826971470204731,
+            "p50": 0.009075783071060939,
+            "p95": 0.018497725672271315,
+            "max": 0.0262654880212978
+          },
+          "phase_s": {
+            "count": 1137,
+            "min": 0.16549233766272664,
+            "p50": 0.2007073755376041,
+            "p95": 0.23432813175022602,
+            "max": 0.2387007661163807
+          },
+          "direction_reversal_count": 77,
+          "direction_eligible_count": 80,
+          "slowdown_count": 44,
+          "slowdown_eligible_count": 73,
+          "warnings": 6,
+          "fallbacks": 2,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "run": "run_20261113_172501",
+          "count": 22,
+          "first_time_s": 1.27448308467865,
+          "last_time_s": 30.170516967773438,
+          "affected_joints": {
+            "L1": 5,
+            "L2": 19,
+            "L3": 10,
+            "L4": 0,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.057529568672180176,
+          "max_selected_step_rad": 0.114829421043396,
+          "max_safe_step_rad": 0.08000004291534424
+        },
+        {
+          "run": "run_20261113_172546",
+          "count": 13,
+          "first_time_s": 1.8032277822494507,
+          "last_time_s": 26.67015266418457,
+          "affected_joints": {
+            "L1": 2,
+            "L2": 12,
+            "L3": 4,
+            "L4": 0,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.016806483268737793,
+          "max_selected_step_rad": 0.0905972421169281,
+          "max_safe_step_rad": 0.08000004291534424
+        },
+        {
+          "run": "run_20261113_172628",
+          "count": 6,
+          "first_time_s": 0.46922728419303894,
+          "last_time_s": 38.269866943359375,
+          "affected_joints": {
+            "L1": 3,
+            "L2": 3,
+            "L3": 1,
+            "L4": 0,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.02255474030971527,
+          "max_selected_step_rad": 0.09492416679859161,
+          "max_safe_step_rad": 0.08000004291534424
+        }
+      ],
+      "offset_counts": {},
+      "speed_ratios_median_50ms_bins": [
+        0.961650675867123,
+        0.756317050466492,
+        0.5719014861425411,
+        0.4651428874619035,
+        0.5718935456123653,
+        0.7357188845290874
+      ],
+      "first_18s_boundary_comparison": {
+        "direction_eligible_count": 111,
+        "direction_reversal_fraction": 0.954954954954955,
+        "slowdown_eligible_count": 104,
+        "speed_drop_below_half_fraction": 0.6923076923076923,
+        "speed_ratios_median_50ms_bins": [
+          0.95708495637628,
+          0.7311349742590849,
+          0.557371376067161,
+          0.43406702567425065,
+          0.5148824099375866,
+          0.64410051389672
+        ]
+      },
+      "boundary_direction_reversal_fraction": 0.9552238805970149,
+      "interior_direction_reversal_fraction": 0.24108878807517822,
+      "boundary_speed_drop_below_half_fraction": 0.5824175824175825,
+      "warning_fraction": 0.013974096796182686,
+      "settings_identical_within_group": true
+    },
+    "D_prefix": {
+      "metrics": {
+        "target_to_filtered_command_rad": {
+          "count": 2917,
+          "min": 0.0007895231246948242,
+          "p50": 0.02443140745162964,
+          "p95": 0.12926027178764343,
+          "max": 0.2044970989227295
+        },
+        "emitted_boundary_rad": {
+          "count": 224,
+          "min": 0.0006940513849258423,
+          "p50": 0.007930964231491089,
+          "p95": 0.02375703155994415,
+          "max": 0.03381061553955078
+        },
+        "raw_boundary_rad": {
+          "count": 224,
+          "min": 0.0016673542559146881,
+          "p50": 0.07277289032936096,
+          "p95": 0.21351043507456777,
+          "max": 0.2652297019958496
+        },
+        "smooth_max_step_rad": {
+          "count": 224,
+          "min": 0.0025605007044930753,
+          "p50": 0.020568524142748013,
+          "p95": 0.048787805154118326,
+          "max": 0.0654065690694765
+        },
+        "fit_mae_rad": {
+          "count": 224,
+          "min": 0.0,
+          "p50": 0.004027834250128198,
+          "p95": 0.012952760857754712,
+          "max": 0.015696961704871244
+        },
+        "fit_compute_s": {
+          "count": 224,
+          "min": 0.0004536611959338188,
+          "p50": 0.0005119894631206989,
+          "p95": 0.0007756010163575411,
+          "max": 0.002296227030456066
+        },
+        "observation_age_s": {
+          "count": 224,
+          "min": 0.16833779495209455,
+          "p50": 0.20317336893640459,
+          "p95": 0.23619909025728703,
+          "max": 0.23803229490295053
+        },
+        "conditioning_s": {
+          "count": 224,
+          "min": 0.0012872982770204544,
+          "p50": 0.0014028081204742193,
+          "p95": 0.002218962670303881,
+          "max": 0.00322171812877059
+        },
+        "background_inference_s": {
+          "count": 224,
+          "min": 0.15768089005723596,
+          "p50": 0.18015748914331198,
+          "p95": 0.20626592068001628,
+          "max": 0.22851371625438333
+        },
+        "following_error_rad": {
+          "count": 9719,
+          "min": 0.0007799858998659981,
+          "p50": 0.008206362225018943,
+          "p95": 0.017460025824527794,
+          "max": 0.02926994692070295
+        },
+        "action_interval_s": {
+          "count": 2914,
+          "min": 0.027072180993855,
+          "p50": 0.03327557886950672,
+          "p95": 0.03565684580244124,
+          "max": 0.039785432163625956
+        },
+        "control_interval_s": {
+          "count": 9719,
+          "min": 0.003362345974892378,
+          "p50": 0.009999743662774563,
+          "p95": 0.01026104441843927,
+          "max": 0.016610652673989534
+        },
+        "background_actions_selected": {
+          "count": 221,
+          "min": 12.0,
+          "p50": 13.0,
+          "p95": 14.0,
+          "max": 14.0
+        },
+        "aligned_start_index": {
+          "count": 0
+        },
+        "alignment_residual_age_s": {
+          "count": 0
+        },
+        "aligned_raw_start_to_command_max_rad": {
+          "count": 0
+        },
+        "aligned_start_to_command_max_rad": {
+          "count": 0
+        },
+        "alignment_conditioning_attempts": {
+          "count": 0
+        },
+        "startup_refresh_observation_age_s": {
+          "count": 0
+        },
+        "startup_refresh_infer_s": {
+          "count": 0
+        },
+        "background_phase_error_s": {
+          "count": 2878,
+          "min": 0.16519454633817077,
+          "p50": 0.20060077402740717,
+          "p95": 0.2337180812144652,
+          "max": 0.23824282176792622
+        },
+        "logged_alignment_phase_error_s": {
+          "count": 0
+        },
+        "boundary_target_slope_change_rad_s": {
+          "count": 223,
+          "min": 0.02991042410591813,
+          "p50": 0.7986938433287968,
+          "p95": 2.3550210440313113,
+          "max": 2.8676628078677595
+        },
+        "boundary_target_direction_cos": {
+          "count": 191,
+          "min": -0.9998462648494394,
+          "p50": -0.9532531325478868,
+          "p95": -0.13463055526632545,
+          "max": 0.7270882602759848
+        },
+        "boundary_control_speed_min_ratio_150ms": {
+          "count": 182,
+          "min": 0.061120959732227496,
+          "p50": 0.5879859245215836,
+          "p95": 0.9457985832303659,
+          "max": 1.970441891452073
+        },
+        "interior_target_direction_cos": {
+          "count": 1527,
+          "min": -0.9991683174565371,
+          "p50": 0.8665376275360973,
+          "p95": 0.995714334429436,
+          "max": 1.0
+        }
+      },
+      "counts": {
+        "background_chunks": 224,
+        "fallback_background_chunks": 3,
+        "warning_actions": 0,
+        "model_updates": 2917,
+        "queue_wait_events": 0,
+        "schedule_resets": 0,
+        "time_alignment_rejected_chunks": 0,
+        "duration_ms": 97195,
+        "phase_background_over_one_tick": 2878,
+        "timeout_cycles_before_first_action": 1,
+        "timeout_cycles_during_action_span": 0,
+        "timeout_cycles_after_last_action": 0
+      },
+      "per_run": [
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_adapolicy/run_20261113_172742",
+          "stop_reason": "operator_stop",
+          "duration_s": 33.54344597319141,
+          "background_chunks": 77,
+          "boundary_rad": {
+            "count": 77,
+            "min": 0.0010461648926138878,
+            "p50": 0.007601022720336914,
+            "p95": 0.025735867023468022,
+            "max": 0.028533339500427246
+          },
+          "inference_s": {
+            "count": 77,
+            "min": 0.15768089005723596,
+            "p50": 0.1791438371874392,
+            "p95": 0.20400230083614587,
+            "max": 0.22851371625438333
+          },
+          "following_error_rad": {
+            "count": 3354,
+            "min": 0.0011510345792614396,
+            "p50": 0.0077063964669105145,
+            "p95": 0.0167072739075635,
+            "max": 0.028610415658186117
+          },
+          "phase_s": {
+            "count": 994,
+            "min": 0.16536449128761888,
+            "p50": 0.20061452710069716,
+            "p95": 0.23365938449278473,
+            "max": 0.23824282176792622
+          },
+          "direction_reversal_count": 65,
+          "direction_eligible_count": 66,
+          "slowdown_count": 28,
+          "slowdown_eligible_count": 64,
+          "warnings": 0,
+          "fallbacks": 1,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_adapolicy/run_20261113_172827",
+          "stop_reason": "operator_stop",
+          "duration_s": 28.969611962791532,
+          "background_chunks": 67,
+          "boundary_rad": {
+            "count": 67,
+            "min": 0.0008412972092628479,
+            "p50": 0.01130455732345581,
+            "p95": 0.024235120415687556,
+            "max": 0.03381061553955078
+          },
+          "inference_s": {
+            "count": 67,
+            "min": 0.16138382302597165,
+            "p50": 0.18175181793048978,
+            "p95": 0.2067898885346949,
+            "max": 0.2154420092701912
+          },
+          "following_error_rad": {
+            "count": 2897,
+            "min": 0.0013211018663365492,
+            "p50": 0.008514926614562102,
+            "p95": 0.017355587001561895,
+            "max": 0.024991745525441367
+          },
+          "phase_s": {
+            "count": 856,
+            "min": 0.16519454633817077,
+            "p50": 0.20057545183226466,
+            "p95": 0.2334602529881522,
+            "max": 0.23779727285727859
+          },
+          "direction_reversal_count": 53,
+          "direction_eligible_count": 57,
+          "slowdown_count": 24,
+          "slowdown_eligible_count": 56,
+          "warnings": 0,
+          "fallbacks": 1,
+          "timeout_cycles": {
+            "before_first_action": 1,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_adapolicy/run_20261113_172909",
+          "stop_reason": "operator_stop",
+          "duration_s": 34.682327677030116,
+          "background_chunks": 80,
+          "boundary_rad": {
+            "count": 80,
+            "min": 0.0006940513849258423,
+            "p50": 0.007533013820648193,
+            "p95": 0.02287376895546913,
+            "max": 0.023769378662109375
+          },
+          "inference_s": {
+            "count": 80,
+            "min": 0.158178408164531,
+            "p50": 0.17918400885537267,
+            "p95": 0.20641375149134547,
+            "max": 0.22796160215511918
+          },
+          "following_error_rad": {
+            "count": 3468,
+            "min": 0.0007799858998659981,
+            "p50": 0.008354685267387973,
+            "p95": 0.018107069960708534,
+            "max": 0.02926994692070295
+          },
+          "phase_s": {
+            "count": 1028,
+            "min": 0.16527696046978235,
+            "p50": 0.20060156215913594,
+            "p95": 0.2338352474151179,
+            "max": 0.2374423467554152
+          },
+          "direction_reversal_count": 65,
+          "direction_eligible_count": 68,
+          "slowdown_count": 27,
+          "slowdown_eligible_count": 62,
+          "warnings": 0,
+          "fallbacks": 1,
+          "timeout_cycles": {
+            "before_first_action": 0,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "run": "run_20261113_172742",
+          "count": 0
+        },
+        {
+          "run": "run_20261113_172827",
+          "count": 0
+        },
+        {
+          "run": "run_20261113_172909",
+          "count": 0
+        }
+      ],
+      "offset_counts": {},
+      "speed_ratios_median_50ms_bins": [
+        1.0267155886345853,
+        0.854940231959922,
+        0.6860559264396127,
+        0.5393257373843832,
+        0.49086816516476395,
+        0.6190565389474464
+      ],
+      "first_18s_boundary_comparison": {
+        "direction_eligible_count": 113,
+        "direction_reversal_fraction": 0.9823008849557522,
+        "slowdown_eligible_count": 112,
+        "speed_drop_below_half_fraction": 0.5089285714285714,
+        "speed_ratios_median_50ms_bins": [
+          1.051818722416991,
+          0.811635354232705,
+          0.6248647871645606,
+          0.48769866229909475,
+          0.4246050381882053,
+          0.5547404414436542
+        ]
+      },
+      "boundary_direction_reversal_fraction": 0.9581151832460733,
+      "interior_direction_reversal_fraction": 0.37786509495743287,
+      "boundary_speed_drop_below_half_fraction": 0.4340659340659341,
+      "warning_fraction": 0.0,
+      "settings_identical_within_group": true
+    },
+    "E_aligned": {
+      "metrics": {
+        "target_to_filtered_command_rad": {
+          "count": 1832,
+          "min": 0.0011256486177444458,
+          "p50": 0.05512227118015289,
+          "p95": 0.2481963694095611,
+          "max": 0.30929017066955566
+        },
+        "emitted_boundary_rad": {
+          "count": 138,
+          "min": 0.0008786767721176147,
+          "p50": 0.006278872489929199,
+          "p95": 0.01940653771162033,
+          "max": 0.03771376609802246
+        },
+        "raw_boundary_rad": {
+          "count": 138,
+          "min": 0.002326756715774536,
+          "p50": 0.051437556743621826,
+          "p95": 0.18767772912979128,
+          "max": 0.2650423049926758
+        },
+        "smooth_max_step_rad": {
+          "count": 138,
+          "min": 0.002670030548481278,
+          "p50": 0.02175468540965131,
+          "p95": 0.042691933435591495,
+          "max": 0.07073850152909045
+        },
+        "fit_mae_rad": {
+          "count": 138,
+          "min": 0.0,
+          "p50": 0.003400808004392153,
+          "p95": 0.01069953441867915,
+          "max": 0.017664911915259124
+        },
+        "fit_compute_s": {
+          "count": 138,
+          "min": 0.00039985496550798416,
+          "p50": 0.0004974496550858021,
+          "p95": 0.0007549102185294033,
+          "max": 0.0020282836630940437
+        },
+        "observation_age_s": {
+          "count": 138,
+          "min": 0.16967820702120662,
+          "p50": 0.20409394218586385,
+          "p95": 0.2374940893612802,
+          "max": 0.27147828694432974
+        },
+        "conditioning_s": {
+          "count": 138,
+          "min": 0.0021797833032906055,
+          "p50": 0.002740421099588275,
+          "p95": 0.006406874977983534,
+          "max": 0.007857412099838257
+        },
+        "background_inference_s": {
+          "count": 138,
+          "min": 0.1602702820673585,
+          "p50": 0.18431619042530656,
+          "p95": 0.2080293701961637,
+          "max": 0.2575202835723758
+        },
+        "following_error_rad": {
+          "count": 6153,
+          "min": 0.0009766882398760646,
+          "p50": 0.009281628907319067,
+          "p95": 0.01657278935875519,
+          "max": 0.026295269622911066
+        },
+        "action_interval_s": {
+          "count": 1829,
+          "min": 0.02494974620640278,
+          "p50": 0.03327621705830097,
+          "p95": 0.036289536580443385,
+          "max": 0.042956633027642965
+        },
+        "control_interval_s": {
+          "count": 6153,
+          "min": 0.002441643737256527,
+          "p50": 0.009999705012887716,
+          "p95": 0.010251584928482771,
+          "max": 0.017586227040737867
+        },
+        "background_actions_selected": {
+          "count": 135,
+          "min": 12.0,
+          "p50": 13.0,
+          "p95": 14.0,
+          "max": 15.0
+        },
+        "aligned_start_index": {
+          "count": 141,
+          "min": 4.0,
+          "p50": 6.0,
+          "p95": 7.0,
+          "max": 8.0
+        },
+        "alignment_residual_age_s": {
+          "count": 141,
+          "min": 0.002280186116695393,
+          "p50": 0.0036959240213036426,
+          "p95": 0.00584880607202648,
+          "max": 0.03133186974252264
+        },
+        "aligned_raw_start_to_command_max_rad": {
+          "count": 141,
+          "min": 0.004395597547039588,
+          "p50": 0.030388059703381265,
+          "p95": 0.10529569170349151,
+          "max": 0.13170243508696022
+        },
+        "aligned_start_to_command_max_rad": {
+          "count": 141,
+          "min": 0.0022702946029471427,
+          "p50": 0.06573604057916249,
+          "p95": 0.26488837836577006,
+          "max": 0.2788823688417079
+        },
+        "alignment_conditioning_attempts": {
+          "count": 141,
+          "min": 1.0,
+          "p50": 1.0,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "startup_refresh_observation_age_s": {
+          "count": 3,
+          "min": 0.16472811298444867,
+          "p50": 0.1723037213087082,
+          "p95": 0.17267380370758473,
+          "max": 0.17271492397412658
+        },
+        "startup_refresh_infer_s": {
+          "count": 3,
+          "min": 0.16191319283097982,
+          "p50": 0.16945640509948134,
+          "p95": 0.1698414814658463,
+          "max": 0.16988426772877574
+        },
+        "background_phase_error_s": {
+          "count": 1793,
+          "min": -0.001953279599547386,
+          "p50": 0.000530892051756382,
+          "p95": 0.0036265528760850377,
+          "max": 0.00811595469713211
+        },
+        "logged_alignment_phase_error_s": {
+          "count": 1832,
+          "min": -0.001953279599547386,
+          "p50": 0.0005547916516661644,
+          "p95": 0.004373163962736721,
+          "max": 0.0338136232458055
+        },
+        "boundary_target_slope_change_rad_s": {
+          "count": 137,
+          "min": 0.04148426753171538,
+          "p50": 0.5766428232351865,
+          "p95": 2.0550378942015053,
+          "max": 2.9190311803965097
+        },
+        "boundary_target_direction_cos": {
+          "count": 119,
+          "min": -0.9996837923571713,
+          "p50": -0.7780938141703495,
+          "p95": 0.6022397872221406,
+          "max": 0.9198074942296222
+        },
+        "boundary_control_speed_min_ratio_150ms": {
+          "count": 112,
+          "min": 0.1537288267267832,
+          "p50": 0.8725013860505169,
+          "p95": 1.0339949508838757,
+          "max": 1.5168407078204966
+        },
+        "interior_target_direction_cos": {
+          "count": 972,
+          "min": -0.9991159346786974,
+          "p50": 0.907155568645255,
+          "p95": 0.9961787396866765,
+          "max": 0.9999735665481589
+        }
+      },
+      "counts": {
+        "background_chunks": 138,
+        "fallback_background_chunks": 5,
+        "warning_actions": 42,
+        "model_updates": 1832,
+        "queue_wait_events": 0,
+        "schedule_resets": 0,
+        "time_alignment_rejected_chunks": 0,
+        "duration_ms": 61536,
+        "phase_background_over_one_tick": 0,
+        "timeout_cycles_before_first_action": 51,
+        "timeout_cycles_during_action_span": 0,
+        "timeout_cycles_after_last_action": 0
+      },
+      "per_run": [
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_adapolicy_aligned/run_20261113_183156",
+          "stop_reason": "operator_stop",
+          "duration_s": 18.93777713412419,
+          "background_chunks": 42,
+          "boundary_rad": {
+            "count": 42,
+            "min": 0.0013059377670288086,
+            "p50": 0.007339954376220703,
+            "p95": 0.01940740644931792,
+            "max": 0.03222265839576721
+          },
+          "inference_s": {
+            "count": 42,
+            "min": 0.1632931102067232,
+            "p50": 0.18403787887655199,
+            "p95": 0.2116616817191243,
+            "max": 0.2575202835723758
+          },
+          "following_error_rad": {
+            "count": 1893,
+            "min": 0.0011508354314511138,
+            "p50": 0.009137301620505411,
+            "p95": 0.01623564717086436,
+            "max": 0.02250540123229805
+          },
+          "phase_s": {
+            "count": 550,
+            "min": -0.001953279599547386,
+            "p50": 0.0004694226663559675,
+            "p95": 0.0035586863989010447,
+            "max": 0.007916399743407965
+          },
+          "direction_reversal_count": 30,
+          "direction_eligible_count": 37,
+          "slowdown_count": 5,
+          "slowdown_eligible_count": 35,
+          "warnings": 0,
+          "fallbacks": 1,
+          "timeout_cycles": {
+            "before_first_action": 17,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_adapolicy_aligned/run_20261113_183234",
+          "stop_reason": "operator_stop",
+          "duration_s": 20.556657172739506,
+          "background_chunks": 46,
+          "boundary_rad": {
+            "count": 46,
+            "min": 0.0020303726196289062,
+            "p50": 0.005894646048545837,
+            "p95": 0.025210976600646973,
+            "max": 0.03771376609802246
+          },
+          "inference_s": {
+            "count": 46,
+            "min": 0.1602702820673585,
+            "p50": 0.185941367642954,
+            "p95": 0.20515504060313106,
+            "max": 0.23473805421963334
+          },
+          "following_error_rad": {
+            "count": 2055,
+            "min": 0.0009766882398760646,
+            "p50": 0.00936400365096457,
+            "p95": 0.016939507383815642,
+            "max": 0.02413639637548659
+          },
+          "phase_s": {
+            "count": 599,
+            "min": -0.0014507584273815155,
+            "p50": 0.0005855001509189606,
+            "p95": 0.0035708872601389907,
+            "max": 0.006974820513278246
+          },
+          "direction_reversal_count": 33,
+          "direction_eligible_count": 41,
+          "slowdown_count": 4,
+          "slowdown_eligible_count": 37,
+          "warnings": 0,
+          "fallbacks": 0,
+          "timeout_cycles": {
+            "before_first_action": 17,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        },
+        {
+          "run": "robot/edulite_a3_vla/inference_outputs_multitask_adapolicy_aligned/run_20261113_183306",
+          "stop_reason": "operator_stop",
+          "duration_s": 22.041441654320806,
+          "background_chunks": 50,
+          "boundary_rad": {
+            "count": 50,
+            "min": 0.0008786767721176147,
+            "p50": 0.005546703934669495,
+            "p95": 0.018472523987293245,
+            "max": 0.021200180053710938
+          },
+          "inference_s": {
+            "count": 50,
+            "min": 0.16347185522317886,
+            "p50": 0.18304990185424685,
+            "p95": 0.2041499304352328,
+            "max": 0.21296178782358766
+          },
+          "following_error_rad": {
+            "count": 2205,
+            "min": 0.0013510960349131657,
+            "p50": 0.009346073756610923,
+            "p95": 0.016395831529062432,
+            "max": 0.026295269622911066
+          },
+          "phase_s": {
+            "count": 644,
+            "min": -0.0016149883158504963,
+            "p50": 0.0005007297731935978,
+            "p95": 0.0036452722502872356,
+            "max": 0.00811595469713211
+          },
+          "direction_reversal_count": 34,
+          "direction_eligible_count": 41,
+          "slowdown_count": 8,
+          "slowdown_eligible_count": 40,
+          "warnings": 42,
+          "fallbacks": 4,
+          "timeout_cycles": {
+            "before_first_action": 17,
+            "during_action_span": 0,
+            "after_last_action": 0
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "run": "run_20261113_183156",
+          "count": 0
+        },
+        {
+          "run": "run_20261113_183234",
+          "count": 0
+        },
+        {
+          "run": "run_20261113_183306",
+          "count": 42,
+          "first_time_s": 20.60306739807129,
+          "last_time_s": 22.034299850463867,
+          "affected_joints": {
+            "L1": 0,
+            "L2": 42,
+            "L3": 0,
+            "L4": 0,
+            "L5": 0,
+            "L6": 0
+          },
+          "max_selected_to_safe_difference_rad": 0.01598314940929413,
+          "max_selected_step_rad": 0.04504992067813873,
+          "max_safe_step_rad": 0.04504992067813873
+        }
+      ],
+      "offset_counts": {
+        "4": 1,
+        "5": 13,
+        "6": 110,
+        "7": 15,
+        "8": 2
+      },
+      "speed_ratios_median_50ms_bins": [
+        1.0,
+        0.9930383441252197,
+        0.9105669307727166,
+        0.8818020869459036,
+        0.9602971674146379,
+        1.0
+      ],
+      "first_18s_boundary_comparison": {
+        "direction_eligible_count": 110,
+        "direction_reversal_fraction": 0.8,
+        "slowdown_eligible_count": 102,
+        "speed_drop_below_half_fraction": 0.13725490196078433,
+        "speed_ratios_median_50ms_bins": [
+          1.0,
+          0.9946504541086671,
+          0.9311050243409829,
+          0.8836902028943974,
+          0.975319988182125,
+          1.0
+        ]
+      },
+      "boundary_direction_reversal_fraction": 0.8151260504201681,
+      "interior_direction_reversal_fraction": 0.2880658436213992,
+      "boundary_speed_drop_below_half_fraction": 0.15178571428571427,
+      "warning_fraction": 0.02292576419213974,
+      "settings_identical_within_group": true
+    }
+  },
+  "settings": {
+    "A_off": {
+      "runtime": {
+        "action_rate_hz": 30.0,
+        "control_rate_hz": 100.0,
+        "prefetch_threshold_actions": 8,
+        "diagnostics": {
+          "enabled": true
+        },
+        "start_delay_s": 3.0,
+        "max_episode_s": 60.0,
+        "camera_max_age_s": 0.25,
+        "require_preview_before_execute": true,
+        "joint_bspline": {
+          "enabled": false,
+          "degree": 3,
+          "history_actions": 2,
+          "control_points": 8,
+          "history_weight": 4.0,
+          "fallback_if_worse": true
+        }
+      },
+      "model": {
+        "config_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/config.yaml",
+        "checkpoint_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/checkpoint_epoch_50.pt",
+        "norm_stats_path": "/home/lab347-no10/Tianyi/LiLa-WAM/utils/stat-edulite-single-multitask.json",
+        "device": "cuda",
+        "dtype": "bfloat16",
+        "task_name": "place_red_block_into_box",
+        "instruction": "pick up the red block and place it on top of the blue block"
+      },
+      "safety": {
+        "clamp_to_training_range": true,
+        "joint_limit_margin_rad": 0.03,
+        "filter_omega": 10.0,
+        "max_velocity_rad_s": [
+          0.35,
+          0.35,
+          0.35,
+          0.45,
+          0.45,
+          0.45
+        ],
+        "max_acceleration_rad_s2": [
+          1.2,
+          1.2,
+          1.2,
+          1.8,
+          1.8,
+          1.8
+        ],
+        "gripper_filter_alpha": 0.7,
+        "gripper_max_target_rate_norm_s": 2.0,
+        "gripper_command_deadband_norm": 0.005,
+        "max_target_step_rad": [
+          0.08,
+          0.08,
+          0.08,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "max_follow_error_rad": 0.3,
+        "follow_error_cycles": 20,
+        "feedback_timeout_s": 0.2,
+        "startup_feedback_timeout_s": 2.0,
+        "model_command_timeout_s": 1.0,
+        "raw_joint_limit_tolerance_rad": 0.25,
+        "raw_gripper_tolerance": 0.2
+      },
+      "model_interface": {
+        "action_chunk_size": 32,
+        "action_execution_horizon": 16,
+        "num_inference_steps": 10
+      }
+    },
+    "B_weighted": {
+      "runtime": {
+        "action_rate_hz": 30.0,
+        "control_rate_hz": 100.0,
+        "prefetch_threshold_actions": 8,
+        "diagnostics": {
+          "enabled": true
+        },
+        "start_delay_s": 3.0,
+        "max_episode_s": 60.0,
+        "camera_max_age_s": 0.25,
+        "require_preview_before_execute": true,
+        "joint_bspline": {
+          "enabled": true,
+          "degree": 3,
+          "history_actions": 2,
+          "control_points": 8,
+          "history_weight": 4.0,
+          "fallback_if_worse": true
+        }
+      },
+      "model": {
+        "config_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/config.yaml",
+        "checkpoint_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/checkpoint_epoch_50.pt",
+        "norm_stats_path": "/home/lab347-no10/Tianyi/LiLa-WAM/utils/stat-edulite-single-multitask.json",
+        "device": "cuda",
+        "dtype": "bfloat16",
+        "task_name": "place_red_block_into_box",
+        "instruction": "pick up the red block and place it on top of the blue block"
+      },
+      "safety": {
+        "clamp_to_training_range": true,
+        "joint_limit_margin_rad": 0.03,
+        "filter_omega": 10.0,
+        "max_velocity_rad_s": [
+          0.35,
+          0.35,
+          0.35,
+          0.45,
+          0.45,
+          0.45
+        ],
+        "max_acceleration_rad_s2": [
+          1.2,
+          1.2,
+          1.2,
+          1.8,
+          1.8,
+          1.8
+        ],
+        "gripper_filter_alpha": 0.7,
+        "gripper_max_target_rate_norm_s": 2.0,
+        "gripper_command_deadband_norm": 0.005,
+        "max_target_step_rad": [
+          0.08,
+          0.08,
+          0.08,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "max_follow_error_rad": 0.3,
+        "follow_error_cycles": 20,
+        "feedback_timeout_s": 0.2,
+        "startup_feedback_timeout_s": 2.0,
+        "model_command_timeout_s": 1.0,
+        "raw_joint_limit_tolerance_rad": 0.25,
+        "raw_gripper_tolerance": 0.2
+      },
+      "model_interface": {
+        "action_chunk_size": 32,
+        "action_execution_horizon": 16,
+        "num_inference_steps": 10
+      }
+    },
+    "C_latest": {
+      "runtime": {
+        "action_rate_hz": 30.0,
+        "camera_max_age_s": 0.25,
+        "control_rate_hz": 100.0,
+        "diagnostics": {
+          "enabled": true
+        },
+        "joint_bspline": {
+          "control_points": 8,
+          "degree": 3,
+          "enabled": true,
+          "fallback_if_worse": true,
+          "history_actions": 2,
+          "history_weight": 4.0,
+          "method": "weighted_history"
+        },
+        "max_episode_s": 60.0,
+        "prefetch_threshold_actions": 8,
+        "require_preview_before_execute": true,
+        "start_delay_s": 3.0,
+        "chunk_update_mode": "latest_ready"
+      },
+      "model": {
+        "checkpoint_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/checkpoint_epoch_50.pt",
+        "config_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/config.yaml",
+        "device": "cuda",
+        "dtype": "bfloat16",
+        "instruction": "pick up the red block and place it in the box",
+        "norm_stats_path": "/home/lab347-no10/Tianyi/LiLa-WAM/utils/stat-edulite-single-multitask.json",
+        "task_name": "place_red_block_into_box"
+      },
+      "safety": {
+        "clamp_to_training_range": true,
+        "feedback_timeout_s": 0.2,
+        "filter_omega": 10.0,
+        "follow_error_cycles": 20,
+        "gripper_command_deadband_norm": 0.005,
+        "gripper_filter_alpha": 0.7,
+        "gripper_max_target_rate_norm_s": 2.0,
+        "joint_limit_margin_rad": 0.03,
+        "max_acceleration_rad_s2": [
+          1.2,
+          1.2,
+          1.2,
+          1.8,
+          1.8,
+          1.8
+        ],
+        "max_follow_error_rad": 0.3,
+        "max_target_step_rad": [
+          0.08,
+          0.08,
+          0.08,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "max_velocity_rad_s": [
+          0.35,
+          0.35,
+          0.35,
+          0.45,
+          0.45,
+          0.45
+        ],
+        "model_command_timeout_s": 1.0,
+        "raw_gripper_tolerance": 0.2,
+        "raw_joint_limit_tolerance_rad": 0.25,
+        "startup_feedback_timeout_s": 2.0
+      },
+      "model_interface": {
+        "action_chunk_size": 32,
+        "action_execution_horizon": 16,
+        "num_inference_steps": 10,
+        "chunk_update_mode": "latest_ready"
+      }
+    },
+    "D_prefix": {
+      "runtime": {
+        "action_rate_hz": 30.0,
+        "camera_max_age_s": 0.25,
+        "control_rate_hz": 100.0,
+        "diagnostics": {
+          "enabled": true
+        },
+        "joint_bspline": {
+          "control_points": 8,
+          "degree": 3,
+          "enabled": true,
+          "fallback_if_worse": true,
+          "history_actions": 2,
+          "history_weight": 4.0,
+          "method": "prefix_refit",
+          "refit_free_control_points": 3,
+          "refit_regularization": 0.05
+        },
+        "max_episode_s": 60.0,
+        "prefetch_threshold_actions": 8,
+        "require_preview_before_execute": true,
+        "start_delay_s": 3.0,
+        "chunk_update_mode": "latest_ready"
+      },
+      "model": {
+        "checkpoint_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/checkpoint_epoch_50.pt",
+        "config_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/config.yaml",
+        "device": "cuda",
+        "dtype": "bfloat16",
+        "instruction": "pick up the red block and place it in the box",
+        "norm_stats_path": "/home/lab347-no10/Tianyi/LiLa-WAM/utils/stat-edulite-single-multitask.json",
+        "task_name": "place_red_block_into_box"
+      },
+      "safety": {
+        "clamp_to_training_range": true,
+        "feedback_timeout_s": 0.2,
+        "filter_omega": 10.0,
+        "follow_error_cycles": 20,
+        "gripper_command_deadband_norm": 0.005,
+        "gripper_filter_alpha": 0.7,
+        "gripper_max_target_rate_norm_s": 2.0,
+        "joint_limit_margin_rad": 0.03,
+        "max_acceleration_rad_s2": [
+          1.2,
+          1.2,
+          1.2,
+          1.8,
+          1.8,
+          1.8
+        ],
+        "max_follow_error_rad": 0.3,
+        "max_target_step_rad": [
+          0.08,
+          0.08,
+          0.08,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "max_velocity_rad_s": [
+          0.35,
+          0.35,
+          0.35,
+          0.45,
+          0.45,
+          0.45
+        ],
+        "model_command_timeout_s": 1.0,
+        "raw_gripper_tolerance": 0.2,
+        "raw_joint_limit_tolerance_rad": 0.25,
+        "startup_feedback_timeout_s": 2.0
+      },
+      "model_interface": {
+        "action_chunk_size": 32,
+        "action_execution_horizon": 16,
+        "num_inference_steps": 10,
+        "chunk_update_mode": "latest_ready"
+      }
+    },
+    "E_aligned": {
+      "runtime": {
+        "action_rate_hz": 30.0,
+        "camera_max_age_s": 0.25,
+        "control_rate_hz": 100.0,
+        "diagnostics": {
+          "enabled": true
+        },
+        "joint_bspline": {
+          "control_points": 8,
+          "degree": 3,
+          "enabled": true,
+          "fallback_if_worse": true,
+          "history_actions": 2,
+          "history_weight": 4.0,
+          "method": "prefix_refit",
+          "refit_free_control_points": 3,
+          "refit_regularization": 0.05
+        },
+        "max_episode_s": 60.0,
+        "prefetch_threshold_actions": 8,
+        "require_preview_before_execute": true,
+        "start_delay_s": 3.0,
+        "chunk_update_mode": "latest_ready",
+        "time_alignment": {
+          "enabled": true
+        }
+      },
+      "model": {
+        "checkpoint_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/checkpoint_epoch_50.pt",
+        "config_path": "/home/lab347-no10/Tianyi/LiLa-WAM/checkpoints_vla/edulite_single_multitask/sft_2026-10-31_17-48-32/config.yaml",
+        "device": "cuda",
+        "dtype": "bfloat16",
+        "instruction": "pick up the red block and place it in the box",
+        "norm_stats_path": "/home/lab347-no10/Tianyi/LiLa-WAM/utils/stat-edulite-single-multitask.json",
+        "task_name": "place_red_block_into_box"
+      },
+      "safety": {
+        "clamp_to_training_range": true,
+        "feedback_timeout_s": 0.2,
+        "filter_omega": 10.0,
+        "follow_error_cycles": 20,
+        "gripper_command_deadband_norm": 0.005,
+        "gripper_filter_alpha": 0.7,
+        "gripper_max_target_rate_norm_s": 2.0,
+        "joint_limit_margin_rad": 0.03,
+        "max_acceleration_rad_s2": [
+          1.2,
+          1.2,
+          1.2,
+          1.8,
+          1.8,
+          1.8
+        ],
+        "max_follow_error_rad": 0.3,
+        "max_target_step_rad": [
+          0.08,
+          0.08,
+          0.08,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "max_velocity_rad_s": [
+          0.35,
+          0.35,
+          0.35,
+          0.45,
+          0.45,
+          0.45
+        ],
+        "model_command_timeout_s": 1.0,
+        "raw_gripper_tolerance": 0.2,
+        "raw_joint_limit_tolerance_rad": 0.25,
+        "startup_feedback_timeout_s": 2.0
+      },
+      "model_interface": {
+        "action_chunk_size": 32,
+        "action_execution_horizon": 16,
+        "num_inference_steps": 10,
+        "chunk_update_mode": "latest_ready",
+        "time_alignment_enabled": true
+      }
+    }
+  },
+  "adjacent_settings_differences": {
+    "A_off_to_B_weighted": [
+      {
+        "field": "runtime.joint_bspline.enabled",
+        "unaligned": false,
+        "aligned": true
+      }
+    ],
+    "B_weighted_to_C_latest": [
+      {
+        "field": "model.instruction",
+        "unaligned": "pick up the red block and place it on top of the blue block",
+        "aligned": "pick up the red block and place it in the box"
+      },
+      {
+        "field": "model_interface.chunk_update_mode",
+        "unaligned": null,
+        "aligned": "latest_ready"
+      },
+      {
+        "field": "runtime.chunk_update_mode",
+        "unaligned": null,
+        "aligned": "latest_ready"
+      },
+      {
+        "field": "runtime.joint_bspline.method",
+        "unaligned": null,
+        "aligned": "weighted_history"
+      }
+    ],
+    "C_latest_to_D_prefix": [
+      {
+        "field": "runtime.joint_bspline.method",
+        "unaligned": "weighted_history",
+        "aligned": "prefix_refit"
+      },
+      {
+        "field": "runtime.joint_bspline.refit_free_control_points",
+        "unaligned": null,
+        "aligned": 3
+      },
+      {
+        "field": "runtime.joint_bspline.refit_regularization",
+        "unaligned": null,
+        "aligned": 0.05
+      }
+    ],
+    "D_prefix_to_E_aligned": [
+      {
+        "field": "model_interface.time_alignment_enabled",
+        "unaligned": null,
+        "aligned": true
+      },
+      {
+        "field": "runtime.time_alignment",
+        "unaligned": null,
+        "aligned": {
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "run_count": 15,
+  "background_chunks": 915,
+  "model_updates": 13006
+}

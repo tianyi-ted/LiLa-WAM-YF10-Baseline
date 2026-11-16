@@ -170,6 +170,8 @@ class ModelFactory:
             intent_pooling=intent_cfg.get('pooling', 'mean') if intent_cfg else 'mean',
             intent_pool_hidden_dim=intent_cfg.get('pool_hidden_size', 256) if intent_cfg else 256,
             intent_pool_num_heads=intent_cfg.get('pool_num_heads', 4) if intent_cfg else 4,
+            intent_pool_num_queries=intent_cfg.get('pool_num_queries', 4) if intent_cfg else 4,
+            intent_pool_interaction_depth=intent_cfg.get('pool_interaction_depth', 1) if intent_cfg else 1,
             intent_pool_grid_size=(img_h // patch_size, img_w // patch_size),
             intent_target_pooling=intent_cfg.get('target_pooling', 'mean') if intent_cfg else 'mean',
             intent_target_attention_mix=intent_cfg.get('target_attention_mix', 0.5) if intent_cfg else 0.5,
@@ -190,6 +192,12 @@ class ModelFactory:
             spatial_warmup_epochs=spatial_cfg.get('warmup_epochs', 0) if spatial_cfg else 0,
             spatial_ramp_epochs=spatial_cfg.get('ramp_epochs', 0) if spatial_cfg else 0,
         )
+        if use_global_intent and intent_cfg.get('pooling', 'mean') == 'task_attention_late':
+            logger.info(
+                "Causal late-pool ENABLED: queries=%s, width=%s, interaction_depth=%s; "
+                "one output latent / one DiT intent token; current observations only",
+                intent_cfg.get('pool_num_queries', 4), intent_cfg.get('pool_hidden_size', 256),
+                intent_cfg.get('pool_interaction_depth', 1))
         return model
 
 
@@ -470,6 +478,8 @@ class VLAWrapper(nn.Module):
             use_spatial_intent=self.use_spatial_intent,
             lambda_spatial_intent=self.lambda_spatial_intent,
             spatial_horizon=self.spatial_horizon,
+            source_mean=batch['fm_source_mean'].to(self.device, self.dtype) if 'fm_source_mean' in batch else None,
+            source_noise_scale=batch['fm_source_scale'].to(self.device, self.dtype) if 'fm_source_scale' in batch else None,
         )
 
         return loss, info_dic

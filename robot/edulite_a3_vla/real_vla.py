@@ -94,6 +94,8 @@ from hardware import (  # noqa: E402
     _wait_feedback_ready,
 )
 from visualization import InferenceVisualizer  # noqa: E402
+from runtime_diagnostics import RuntimeDiagnostics  # noqa: E402
+from trajectory_refit import fit_local_prefix  # noqa: E402
 
 
 def _model_camera_image(camera_rgb: np.ndarray) -> np.ndarray:
@@ -178,23 +180,45 @@ def load_stats(path: str | Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np
     return action_min, action_max, state_min, state_max, stats.get("meta", {})
 
 
+def _chunk_update_mode(config: dict) -> str:
+    mode = str(config["runtime"].get("chunk_update_mode", "drain_queue"))
+    if mode not in {"drain_queue", "latest_ready"}:
+        raise ValueError("runtime.chunk_update_mode must be drain_queue or latest_ready")
+    return mode
+
+
+def _time_alignment_enabled(config: dict, prediction_steps: int, horizon: int) -> bool:
+    cfg = config["runtime"].get("time_alignment", {})
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("enabled", False), bool):
+        raise ValueError("runtime.time_alignment must be a mapping with boolean enabled")
+    enabled = cfg.get("enabled", False)
+    if enabled and prediction_steps <= horizon:
+        raise ValueError("time alignment requires action_chunk_size > action_execution_horizon")
+    return enabled
+
+
 def _joint_bspline_settings(config: dict, horizon: int) -> dict[str, Any]:
     cfg = config["runtime"].get("joint_bspline", {})
     if not isinstance(cfg, dict):
         raise ValueError("runtime.joint_bspline must be a mapping")
     settings = {
         "enabled": bool(cfg.get("enabled", False)),
+        "method": str(cfg.get("method", "weighted_history")),
         "degree": int(cfg.get("degree", 3)),
         "history_actions": int(cfg.get("history_actions", 8)),
         "control_points": int(cfg.get("control_points", 8)),
         "history_weight": float(cfg.get("history_weight", 4.0)),
         "fallback_if_worse": bool(cfg.get("fallback_if_worse", True)),
+        "refit_free_control_points": int(cfg.get("refit_free_control_points", 3)),
+        "refit_regularization": float(cfg.get("refit_regularization", 0.05)),
     }
     # B-spline is an optional deployment post-process.  When disabled, its
     # structural parameters are inert placeholders; do not reject a config
     # such as history_actions=0 merely because the smoother is not used.
     if not settings["enabled"]:
         return settings
+    if settings["method"] not in {"weighted_history", "prefix_refit"}:
+        raise ValueError("runtime.joint_bspline.method must be weighted_history or prefix_refit")
     if settings["degree"] != 3:
         raise ValueError("runtime.joint_bspline.degree must be 3")
     if settings["history_actions"] < 2:
@@ -207,8 +231,15 @@ def _joint_bspline_settings(config: dict, horizon: int) -> dict[str, Any]:
         raise ValueError(
             "runtime.joint_bspline.control_points cannot exceed history + horizon"
         )
-    if settings["history_weight"] <= 0.0:
+    if not math.isfinite(settings["history_weight"]) or settings["history_weight"] <= 0.0:
         raise ValueError("runtime.joint_bspline.history_weight must be positive")
+    if settings["method"] == "prefix_refit":
+        if settings["control_points"] > horizon:
+            raise ValueError("prefix_refit.control_points cannot exceed the future horizon")
+        if not 1 <= settings["refit_free_control_points"] < settings["control_points"]:
+            raise ValueError("refit_free_control_points must be in [1, control_points)")
+        if not math.isfinite(settings["refit_regularization"]) or settings["refit_regularization"] < 0:
+            raise ValueError("refit_regularization must be finite and nonnegative")
     return settings
 
 
@@ -260,7 +291,15 @@ def static_check(config: dict) -> dict:
     horizon = int(common.get("action_execution_horizon", -1))
     if horizon <= 0:
         raise ValueError("trained model action_execution_horizon must be positive")
+    rate = float(config["runtime"].get("action_rate_hz", 30.0))
+    threshold = int(config["runtime"].get("prefetch_threshold_actions", horizon // 2))
+    if not math.isfinite(rate) or rate <= 0:
+        raise ValueError("runtime.action_rate_hz must be finite and positive")
+    if not 0 <= threshold < horizon:
+        raise ValueError("prefetch_threshold_actions must be in [0, horizon)")
     bspline = _joint_bspline_settings(config, horizon)
+    _chunk_update_mode(config)
+    _time_alignment_enabled(config, int(common.get("action_chunk_size", -1)), horizon)
 
     collector = load_collector_config(collector_path)
     side = str(config["hardware"].get("arm_side", "right"))
@@ -585,6 +624,11 @@ class EDULITEVLAController:
         with self._lock:
             return self._target.copy()
 
+    def joint_command_snapshot(self) -> np.ndarray:
+        """Last filtered L1-L6 command, without reading CAN or changing control."""
+        with self._lock:
+            return self._sent.copy()
+
     def hold_current(self) -> None:
         if not self.armed:
             return
@@ -688,11 +732,14 @@ class EDULITEVLAController:
             xyz.append([pose.x, pose.y, pose.z])
         return np.asarray(xyz, dtype=np.float32)
 
-    def observation(self, rgb: np.ndarray) -> dict[str, Any]:
+    def observation(self, rgb: np.ndarray, camera_mono_s: float | None = None) -> dict[str, Any]:
+        observed = time.monotonic()
         feedback = _feedback(self.arm, "task arm", self.feedback_timeout)
         left_pose = _pose(self.arm, self.arm_cfg)
         left_gripper = self.gripper.normalize(feedback[6])
         return {
+            "_runtime_timing": {"observation_mono_s": observed,
+                                "camera_mono_s": observed if camera_mono_s is None else camera_mono_s},
             "endpose": {
                 "left_endpose": left_pose,
                 "left_gripper": left_gripper,
@@ -786,7 +833,8 @@ class EDULITEVLAController:
                 # Stale inference never extrapolates; it simply holds target.
                 if now - last_command > float(self.safety.get("model_command_timeout_s", 1.0)):
                     target = filt.state.position.copy()
-                state = filt.step(target, max(now - previous, 1e-4))
+                control_interval = now - previous
+                state = filt.step(target, max(control_interval, 1e-4))
                 previous = now
                 error = float(np.max(np.abs(state.position - feedback[:6])))
                 bad_cycles = bad_cycles + 1 if error > self.follow_error_limit else 0
@@ -801,6 +849,16 @@ class EDULITEVLAController:
                 with self._lock:
                     self._sent = state.position.copy()
                 self._update_gripper(feedback, now)
+                diagnostics = getattr(self, "diagnostics", None)
+                if diagnostics is not None:
+                    diagnostics.record("controls", {
+                        "control_mono_s": now, "interval_s": control_interval,
+                        "work_s": time.monotonic() - now,
+                        "following_error_rad": error,
+                        "command_age_s": now - last_command,
+                        "model_command_timed_out": int(now - last_command > float(self.safety.get("model_command_timeout_s", 1.0))),
+                        "max_command_velocity_rad_s": float(np.max(np.abs(state.velocity))),
+                    })
                 deadline += period
                 time.sleep(max(0.0, deadline - time.monotonic()))
                 if time.monotonic() - deadline > period:
@@ -889,12 +947,7 @@ class KeyReader:
 
 
 class CubicBSplineJointSmoother:
-    """Least-squares cubic B-spline smoothing for executable L1-L6 chunks.
-
-    The fit includes already emitted joint targets as a fixed history prefix.
-    Only the future part of the reconstructed curve is returned, so past robot
-    commands are never rewritten. L7 passes through unchanged.
-    """
+    """Optional weighted-history or local-prefix fitting of L1-L6; L7 passes through."""
 
     def __init__(
         self,
@@ -904,14 +957,17 @@ class CubicBSplineJointSmoother:
     ):
         cfg = _joint_bspline_settings(config, horizon)
         self.enabled = cfg["enabled"]
+        self.method = cfg["method"]
         self.degree = cfg["degree"]
         self.history_actions = cfg["history_actions"]
         self.control_points = cfg["control_points"]
         self.history_weight = cfg["history_weight"]
         self.fallback_if_worse = cfg["fallback_if_worse"]
+        self.refit_free_control_points = cfg["refit_free_control_points"]
+        self.refit_regularization = cfg["refit_regularization"]
         self.controller = controller
         self.history: deque[np.ndarray] = deque(maxlen=self.history_actions)
-        self.last_metrics: dict[str, float | int] = {}
+        self.last_metrics: dict[str, Any] = {}
 
     def reset(self, anchor: np.ndarray) -> None:
         value = np.asarray(anchor, dtype=np.float64)
@@ -942,6 +998,60 @@ class CubicBSplineJointSmoother:
 
         history = np.asarray(self.history, dtype=np.float64)
         raw_future = value[:, :6].astype(np.float64)
+        fit_started = time.monotonic()
+        fit_metrics = {}
+        if self.method == "prefix_refit":
+            fit = fit_local_prefix(
+                raw_future, history, degree=self.degree, control_points=self.control_points,
+                free_control_points=self.refit_free_control_points,
+                history_weight=self.history_weight, regularization=self.refit_regularization,
+            )
+            smooth_future = fit.future
+            fit_metrics = {
+                "refit_history_rmse_before_rad": fit.history_rmse_before,
+                "refit_history_rmse_after_rad": fit.history_rmse_after,
+                "refit_control_delta_max_rad": float(np.max(np.abs(fit.control_points - fit.original_control_points))),
+            }
+        else:
+            smooth_future = self._fit_weighted_history(raw_future, history)
+        clipped = np.clip(smooth_future, self.controller.lower, self.controller.upper)
+
+        anchor = history[-1]
+        raw_boundary = float(np.max(np.abs(raw_future[0] - anchor)))
+        smooth_boundary = float(np.max(np.abs(clipped[0] - anchor)))
+        raw_delta = np.diff(np.vstack([anchor, raw_future]), axis=0)
+        smooth_delta = np.diff(np.vstack([anchor, clipped]), axis=0)
+        metrics: dict[str, Any] = {
+            "bspline_method": self.method,
+            "raw_boundary_rad": raw_boundary,
+            "smooth_boundary_rad": smooth_boundary,
+            "raw_max_step_rad": float(np.max(np.abs(raw_delta))),
+            "smooth_max_step_rad": float(np.max(np.abs(smooth_delta))),
+            "fit_mae_rad": float(np.mean(np.abs(clipped - raw_future))),
+            "clipped_values": int(np.count_nonzero(np.abs(clipped - smooth_future) > 1e-9)),
+            "candidate_boundary_rad": smooth_boundary,
+            "candidate_max_step_rad": float(np.max(np.abs(smooth_delta))),
+            "fit_compute_s": time.monotonic() - fit_started,
+            "fallback": 0,
+            **fit_metrics,
+        }
+        if self.fallback_if_worse and (
+            metrics["smooth_boundary_rad"] > metrics["raw_boundary_rad"] + 1e-9
+            or metrics["smooth_max_step_rad"] > metrics["raw_max_step_rad"] + 1e-9
+        ):
+            clipped = raw_future
+            metrics["smooth_boundary_rad"] = metrics["raw_boundary_rad"]
+            metrics["smooth_max_step_rad"] = metrics["raw_max_step_rad"]
+            metrics["fit_mae_rad"] = 0.0
+            metrics["clipped_values"] = 0
+            metrics["fallback"] = 1
+        self.last_metrics = metrics
+        result = value.copy()
+        result[:, :6] = clipped.astype(np.float32)
+        return result
+
+    def _fit_weighted_history(self, raw_future: np.ndarray, history: np.ndarray) -> np.ndarray:
+        """The original fitter, preserving its knot vector and weighting exactly."""
         samples = np.concatenate([history, raw_future], axis=0)
         sample_count = samples.shape[0]
         if self.control_points > sample_count:
@@ -971,54 +1081,14 @@ class CubicBSplineJointSmoother:
         if not isinstance(spline, BSpline):
             raise RuntimeError("SciPy did not return a B-spline")
         rebuilt = np.asarray(spline(x), dtype=np.float64)
-        smooth_future = rebuilt[self.history_actions :]
-        clipped = np.clip(
-            smooth_future,
-            self.controller.lower,
-            self.controller.upper,
-        )
-
-        anchor = history[-1]
-        raw_boundary = float(np.max(np.abs(raw_future[0] - anchor)))
-        smooth_boundary = float(np.max(np.abs(clipped[0] - anchor)))
-        raw_delta = np.diff(np.vstack([anchor, raw_future]), axis=0)
-        smooth_delta = np.diff(np.vstack([anchor, clipped]), axis=0)
-        metrics: dict[str, float | int] = {
-            "raw_boundary_rad": raw_boundary,
-            "smooth_boundary_rad": smooth_boundary,
-            "raw_max_step_rad": float(np.max(np.abs(raw_delta))),
-            "smooth_max_step_rad": float(np.max(np.abs(smooth_delta))),
-            "fit_mae_rad": float(np.mean(np.abs(clipped - raw_future))),
-            "clipped_values": int(
-                np.count_nonzero(np.abs(clipped - smooth_future) > 1e-9)
-            ),
-            "fallback": 0,
-        }
-        if self.fallback_if_worse and (
-            metrics["smooth_boundary_rad"] > metrics["raw_boundary_rad"] + 1e-9
-            or metrics["smooth_max_step_rad"] > metrics["raw_max_step_rad"] + 1e-9
-        ):
-            # A fitted curve is not automatically better for every possible
-            # model block. Keep the established path when either continuity
-            # metric would become worse; downstream safety clipping/filtering
-            # remains exactly the same as before this optional layer.
-            clipped = raw_future
-            metrics["smooth_boundary_rad"] = metrics["raw_boundary_rad"]
-            metrics["smooth_max_step_rad"] = metrics["raw_max_step_rad"]
-            metrics["fit_mae_rad"] = 0.0
-            metrics["clipped_values"] = 0
-            metrics["fallback"] = 1
-        self.last_metrics = metrics
-        result = value.copy()
-        result[:, :6] = clipped.astype(np.float32)
-        return result
+        return rebuilt[self.history_actions :]
 
     def metrics_line(self, label: str) -> str | None:
         if not self.last_metrics:
             return None
         m = self.last_metrics
         return (
-            f"B-SPLINE {label}: boundary {m['raw_boundary_rad']:.4f}->"
+            f"B-SPLINE {label} ({self.method}): boundary {m['raw_boundary_rad']:.4f}->"
             f"{m['smooth_boundary_rad']:.4f} rad, max_step "
             f"{m['raw_max_step_rad']:.4f}->{m['smooth_max_step_rad']:.4f} rad, "
             f"fit_mae={m['fit_mae_rad']:.4f} rad, clipped={m['clipped_values']}, "
@@ -1034,6 +1104,13 @@ class AsyncActionChunks:
         self.controller = controller
         self.instruction = instruction
         self.horizon = int(agent.action_execution_horizon)
+        self.chunk_update_mode = _chunk_update_mode(config)
+        self.prediction_steps = int(agent.config.common.action_chunk_size)
+        self.time_alignment = _time_alignment_enabled(config, self.prediction_steps, self.horizon)
+        self.action_rate = float(config["runtime"].get("action_rate_hz", 30.0))
+        if not math.isfinite(self.action_rate) or self.action_rate <= 0:
+            raise ValueError("runtime.action_rate_hz must be finite and positive")
+        self._alignment_refresh_needed = False
         self.prefetch_threshold = int(
             config["runtime"].get("prefetch_threshold_actions", self.horizon // 2)
         )
@@ -1048,6 +1125,80 @@ class AsyncActionChunks:
         self.smoother = CubicBSplineJointSmoother(
             config, controller, self.horizon
         )
+        self.diagnostics = getattr(controller, "diagnostics", None)
+        self._chunk_id = 0
+        self._future_meta = None
+        self._pending_meta = None
+        self.current_meta = None
+        self.preview_meta = None
+        self.preview_metrics = {}
+        self._last_emitted_joint = None
+        self._current_selected = 0
+        self._first_selected_mono = None
+        self._last_selected_mono = None
+        if self.diagnostics is not None:
+            self.diagnostics.interface = {
+                "action_chunk_size": int(agent.config.common.action_chunk_size),
+                "action_execution_horizon": self.horizon,
+                "num_inference_steps": getattr(agent, "num_inference_steps", None),
+                "chunk_update_mode": self.chunk_update_mode,
+                "time_alignment_enabled": self.time_alignment,
+            }
+
+    def _timed_infer(self, observation):
+        started = time.monotonic()
+        result = self._infer(observation)
+        # RobotWinInference returns a CPU NumPy array after .cpu(), so this
+        # includes GPU completion/transfer, not only CUDA launch overhead.
+        return result, started, time.monotonic()
+
+    def _metadata(self, observation, source):
+        self._chunk_id += 1
+        now = time.monotonic()
+        timing = observation.get("_runtime_timing", {})
+        if self.time_alignment:
+            stamp = timing.get("observation_mono_s")
+            if stamp is None or not math.isfinite(float(stamp)) or float(stamp) > now + 1e-6:
+                raise ValueError("time alignment requires a finite, nonfuture observation_mono_s")
+        return {"chunk_id": self._chunk_id, "source": source, "submitted_mono_s": now,
+                "observation_mono_s": timing.get("observation_mono_s", now),
+                "camera_mono_s": timing.get("camera_mono_s", now)}
+
+    def _record_admission(self, meta, chunk, metrics):
+        if meta is None:
+            return
+        now = time.monotonic()
+        meta = dict(meta)
+        meta.update({"admitted_mono_s": now,
+                     "observation_age_s": now - meta["observation_mono_s"],
+                     "camera_age_s": now - meta["camera_mono_s"],
+                     "ready_to_admit_s": now - meta["completed_mono_s"],
+                     "worker_wait_s": meta["infer_started_mono_s"] - meta["submitted_mono_s"],
+                     "infer_s": meta["completed_mono_s"] - meta["infer_started_mono_s"]})
+        anchor = self._last_emitted_joint
+        meta["emitted_boundary_rad"] = float(np.max(np.abs(chunk[0, :6] - anchor))) if anchor is not None else None
+        meta["chunk_update_mode"] = self.chunk_update_mode
+        meta["planned_actions"] = len(chunk)
+        meta.update(metrics)
+        self.current_meta = meta
+        self._current_selected = 0
+        self._first_selected_mono = None
+        self._last_selected_mono = None
+        if self.diagnostics is not None:
+            self.diagnostics.record("chunks", meta)
+
+    def _finish_current_chunk(self, reason: str, discarded: int) -> None:
+        if self.current_meta is not None and self.diagnostics is not None:
+            self.diagnostics.record("executions", {
+                "chunk_id": self.current_meta["chunk_id"], "source": self.current_meta["source"],
+                "chunk_update_mode": self.chunk_update_mode, "end_reason": reason,
+                "planned_actions": self.horizon, "actions_selected": self._current_selected,
+                "discarded_actions": discarded,
+                "first_selected_mono_s": self._first_selected_mono,
+                "last_selected_mono_s": self._last_selected_mono,
+                "ended_mono_s": time.monotonic(),
+            })
+        self.current_meta = None
 
     def _infer(self, observation: dict[str, Any]) -> np.ndarray:
         # static_check enforces state_indices=[0], so every chunk needs only
@@ -1075,9 +1226,11 @@ class AsyncActionChunks:
             raise RuntimeError(
                 f"invalid model chunk: expected {expected}, got {value.shape}"
             )
-        # The model tail is intentionally not executed by this runtime.
-        for action in value[: self.horizon]:
-            self.controller.validate_model_action(action)
+        # Alignment validates the actually selected window at admission,
+        # including newly used tail actions. Legacy mode still uses the prefix.
+        if not self.time_alignment:
+            for action in value[: self.horizon]:
+                self.controller.validate_model_action(action)
         return value
 
     def _validate_horizon(self, actions: np.ndarray) -> np.ndarray:
@@ -1086,28 +1239,58 @@ class AsyncActionChunks:
     def preview(self, observation: dict[str, Any]) -> tuple[np.ndarray, float]:
         self.wait_idle()
         started = time.perf_counter()
-        raw_chunk = self._validate_chunk(self._infer(observation))
+        meta = self._metadata(observation, "preview")
+        result, infer_started, completed = self._timed_infer(observation)
+        meta.update(infer_started_mono_s=infer_started, completed_mono_s=completed)
+        self.preview_meta = meta
+        raw_chunk = self._validate_chunk(result)
+        if self.time_alignment:
+            self._validate_horizon(raw_chunk[: self.horizon])
         self.smoother.reset(self.controller.joint_target_snapshot())
         chunk = self._validate_horizon(
             self.smoother.smooth(raw_chunk[: self.horizon])
         )
         line = self.smoother.metrics_line("PREVIEW")
+        self.preview_metrics = dict(self.smoother.last_metrics)
+        self.preview_metrics.setdefault("raw_boundary_rad", float(np.max(np.abs(
+            raw_chunk[0, :6] - self.controller.joint_target_snapshot()))))
         if line:
             print(line)
         return chunk, time.perf_counter() - started
 
-    def start(self, preview_chunk: np.ndarray) -> None:
+    def start(self, preview_chunk: np.ndarray, observation: dict[str, Any] | None = None) -> None:
+        if self.time_alignment and observation is None:
+            raise ValueError("aligned start needs a fresh observation after the countdown")
         self.stop()
+        if self.time_alignment:
+            # The inspected preview is usually several seconds old. Refresh
+            # while holding, without concurrently accessing the same agent.
+            self.wait_idle()
+            self.smoother.reset(self.controller.joint_target_snapshot())
+            self._last_emitted_joint = self.controller.joint_target_snapshot().copy()
+            meta = self._metadata(observation, "startup_refresh")
+            result, started, completed = self._timed_infer(observation)
+            meta.update(infer_started_mono_s=started, completed_mono_s=completed)
+            self.pending = self._validate_chunk(result).copy()
+            self._pending_meta = meta
+            if not self._admit_pending():
+                raise RuntimeError("fresh startup prediction expired; retry deployment with a fresh preview")
+            return
         chunk = self._validate_horizon(preview_chunk)
         self.smoother.reset(self.controller.joint_target_snapshot())
         self.actions.extend(chunk.copy())
+        self._last_emitted_joint = self.controller.joint_target_snapshot().copy()
+        self._record_admission(self.preview_meta, chunk, self.preview_metrics)
 
     def _submit(self, observation: dict[str, Any]) -> None:
         if self.future is not None or self.pending is not None:
             return
         generation = self.generation
         self.future_generation = generation
-        self.future = self.executor.submit(self._infer, observation)
+        self._future_meta = self._metadata(observation, "background")
+        self._future_meta["queue_remaining_at_submit"] = len(self.actions)
+        self.future = self.executor.submit(self._timed_infer, observation)
+        self._alignment_refresh_needed = False
 
     def _poll(self) -> None:
         if self.future is None or not self.future.done():
@@ -1116,33 +1299,126 @@ class AsyncActionChunks:
         generation = self.future_generation
         self.future = None
         self.future_generation = None
-        result = future.result()
+        result, infer_started, completed = future.result()
+        meta, self._future_meta = self._future_meta, None
         if generation != self.generation:
             return
         chunk = self._validate_chunk(result)
-        self.pending = chunk[: self.horizon].copy()
+        self.pending = (chunk if self.time_alignment else chunk[: self.horizon]).copy()
+        meta.update(infer_started_mono_s=infer_started, completed_mono_s=completed,
+                    polled_mono_s=time.monotonic())
+        if self.diagnostics is not None:
+            self.diagnostics.record("inferences", {
+                **meta, "infer_s": completed - infer_started,
+                "worker_wait_s": infer_started - meta["submitted_mono_s"],
+                "poll_delay_s": meta["polled_mono_s"] - completed,
+            })
+        self._pending_meta = meta
 
-    def _admit_pending(self) -> None:
+    def _aligned_start(self, now: float) -> tuple[int, float]:
+        stamp = float(self._pending_meta["observation_mono_s"])
+        age = now - stamp
+        if not math.isfinite(age) or age < -1e-6:
+            raise ValueError("invalid prediction time origin for alignment")
+        age = max(0.0, age)
+        # Latest sample at/before now. The small epsilon handles floating
+        # roundoff exactly at a sample boundary, not a latency fudge factor.
+        return int(math.floor(age * self.action_rate + 1e-9)), age
+
+    def _reject_aligned_pending(self, reason: str, start: int, age: float, attempts: int) -> bool:
+        if self.diagnostics is not None:
+            self.diagnostics.record("alignment_rejections", {
+                "chunk_id": self._pending_meta["chunk_id"], "source": self._pending_meta["source"],
+                "reason": reason, "rejected_mono_s": time.monotonic(),
+                "observation_age_s": age, "aligned_start_index": start,
+                "prediction_steps": len(self.pending), "required_horizon": self.horizon,
+                "conditioning_attempts": attempts,
+            })
+        self.pending = None
+        self._pending_meta = None
+        self._alignment_refresh_needed = True
+        return False
+
+    def _admit_pending(self) -> bool:
         if self.pending is None:
-            return
-        chunk = self._validate_horizon(self.smoother.smooth(self.pending))
+            return False
+        discarded = len(self.actions)
+        if discarded and self.chunk_update_mode != "latest_ready":
+            raise RuntimeError("drain_queue cannot replace an unconsumed action queue")
+        previous_id = self.current_meta["chunk_id"] if self.current_meta else None
+        previous_selected = self._current_selected
+        conditioning_started = time.monotonic()
+        alignment_metrics = {}
+        for attempt in range(2 if self.time_alignment else 1):
+            start, age = self._aligned_start(time.monotonic()) if self.time_alignment else (0, 0.0)
+            if start + self.horizon > len(self.pending):
+                if not self.time_alignment:
+                    raise RuntimeError("pending prediction is shorter than the execution horizon")
+                return self._reject_aligned_pending("insufficient_tail", start, age, attempt)
+            raw_window = self.pending[start : start + self.horizon]
+            if self.time_alignment:
+                self._validate_horizon(raw_window)
+            raw_boundary = float(np.max(np.abs(raw_window[0, :6] - self._last_emitted_joint)))
+            chunk = self._validate_horizon(self.smoother.smooth(raw_window))
+            if not self.time_alignment:
+                break
+            after_start, after_age = self._aligned_start(time.monotonic())
+            if after_start + self.horizon > len(self.pending):
+                return self._reject_aligned_pending("insufficient_tail", after_start, after_age, attempt + 1)
+            if after_start != start:
+                if attempt == 1:
+                    return self._reject_aligned_pending("conditioning_overran_step", after_start, after_age, attempt + 1)
+                continue
+            command_snapshot = getattr(self.controller, "joint_command_snapshot", None)
+            command_position = command_snapshot() if command_snapshot is not None else None
+            skipped_gripper = self.pending[:start, 6]
+            alignment_metrics = {
+                "aligned_start_index": start, "aligned_end_index_exclusive": start + self.horizon,
+                "alignment_reference_mono_s": float(self._pending_meta["observation_mono_s"]),
+                "alignment_evaluated_age_s": after_age,
+                "alignment_residual_age_s": after_age - start / self.action_rate,
+                "alignment_conditioning_attempts": attempt + 1,
+                "aligned_start_gripper_norm": float(raw_window[0, 6]),
+                "skipped_gripper_min_norm": float(skipped_gripper.min()) if start else None,
+                "skipped_gripper_max_norm": float(skipped_gripper.max()) if start else None,
+                "aligned_raw_start_to_command_max_rad": float(np.max(np.abs(raw_window[0, :6] - command_position))) if command_position is not None else None,
+                "aligned_start_to_command_max_rad": float(np.max(np.abs(chunk[0, :6] - command_position))) if command_position is not None else None,
+            }
+            break
+        conditioning_s = time.monotonic() - conditioning_started
         line = self.smoother.metrics_line("CHUNK")
         if line:
             print(line)
+        metrics = {"raw_boundary_rad": raw_boundary, **self.smoother.last_metrics,
+                   "discarded_queue_actions": discarded, "previous_chunk_id": previous_id,
+                   "previous_chunk_actions_selected": previous_selected,
+                   "conditioning_s": conditioning_s, **alignment_metrics}
+        # Fit and validate against the latest history BEFORE changing the queue.
+        # Only targets actually selected by next_action enter that history.
+        self._finish_current_chunk("replaced" if discarded else "exhausted", discarded)
+        self.actions.clear()
+        self._record_admission(self._pending_meta, chunk, metrics)
         self.actions.extend(chunk)
         self.pending = None
+        self._pending_meta = None
+        return True
 
     def next_action(self, observation: dict[str, Any]) -> np.ndarray | None:
         self._poll()
-        if not self.actions and self.pending is not None:
+        if self.pending is not None and (not self.actions or self.chunk_update_mode == "latest_ready"):
             self._admit_pending()
         if not self.actions:
             self._submit(observation)
             return None
         action = self.actions.popleft()
         self.smoother.observe(action)
+        self._last_emitted_joint = action[:6].copy()
+        self._current_selected += 1
+        self._last_selected_mono = time.monotonic()
+        if self._first_selected_mono is None:
+            self._first_selected_mono = self._last_selected_mono
         if (
-            len(self.actions) <= self.prefetch_threshold
+            (len(self.actions) <= self.prefetch_threshold or self._alignment_refresh_needed)
             and self.pending is None
             and self.future is None
         ):
@@ -1150,12 +1426,17 @@ class AsyncActionChunks:
         return action
 
     def stop(self) -> None:
+        self._finish_current_chunk("stopped", len(self.actions))
         self.generation += 1
         self.actions.clear()
         self.pending = None
+        self._pending_meta = None
+        self._alignment_refresh_needed = False
+        self.current_meta = None
         if self.future is not None and self.future.cancel():
             self.future = None
             self.future_generation = None
+            self._future_meta = None
 
     def wait_idle(self) -> None:
         if self.future is not None:
@@ -1165,6 +1446,8 @@ class AsyncActionChunks:
             self.future = None
             self.future_generation = None
             self.pending = None
+            self._future_meta = None
+            self._pending_meta = None
 
     def close(self) -> None:
         self.stop()
@@ -1201,14 +1484,26 @@ def print_static_report(config: dict, checked: dict) -> None:
     image_size = checked["train_config"]["dataset"]["image_size"]
     print(f"  inference resize: {image_size[0]}x{image_size[1]} (width x height)")
     print("  deployed action: action[0:6] joints + action[6] gripper")
+    horizon = int(checked["train_config"]["common"]["action_execution_horizon"])
+    threshold = int(config["runtime"].get("prefetch_threshold_actions", horizon // 2))
+    rate = float(config["runtime"].get("action_rate_hz", 30.0))
+    print(f"  async prefetch: horizon={horizon}, threshold={threshold}, nominal budget={threshold / rate:.3f}s")
+    print(f"  chunk update mode: {_chunk_update_mode(config)}")
+    aligned = _time_alignment_enabled(config, int(checked["train_config"]["common"]["action_chunk_size"]), horizon)
+    print(f"  admission time alignment: {'enabled (fresh startup, floor(age * Hz))' if aligned else 'disabled'}")
+    enabled = bool(config["runtime"].get("diagnostics", {}).get("enabled", False))
+    print(f"  runtime diagnostics: {'enabled' if enabled else 'disabled'}")
     bspline = checked["joint_bspline"]
     if bspline["enabled"]:
         print(
             "  L1-L6 cubic B-spline: "
+            f"method={bspline['method']}, "
             f"history={bspline['history_actions']}, "
             f"controls={bspline['control_points']}, "
             f"history_weight={bspline['history_weight']:.2f}"
         )
+        if bspline["method"] == "prefix_refit":
+            print(f"  local prefix: free_controls={bspline['refit_free_control_points']}, regularization={bspline['refit_regularization']}")
     else:
         print("  L1-L6 cubic B-spline: disabled")
     print(
@@ -1229,6 +1524,8 @@ def run_execute(config: dict, checked: dict) -> int:
     camera_name = config["hardware"]["camera_name"]
     camera = cameras[camera_name]
     controller = EDULITEVLAController(config, checked)
+    diagnostics = RuntimeDiagnostics(config)
+    controller.diagnostics = diagnostics
     visualizer = InferenceVisualizer(config, controller)
     instruction = str(config["model"]["instruction"])
     policy = AsyncActionChunks(agent, controller, instruction, config)
@@ -1244,6 +1541,13 @@ def run_execute(config: dict, checked: dict) -> int:
     next_action = 0.0
     preview_chunk: np.ndarray | None = None
     stop_requested = threading.Event()
+    last_tick = None
+    last_action = None
+    exit_reason = "program_exit"
+
+    def finalize_episode(reason):
+        diagnostics.finish(reason)
+        visualizer.finalize(reason)
 
     def emergency() -> None:
         nonlocal executing
@@ -1299,7 +1603,7 @@ def run_execute(config: dict, checked: dict) -> int:
                     else:
                         frame = camera.latest(camera_max_age)
                         model_rgb = _model_camera_image(frame.rgb)
-                        observation = controller.observation(model_rgb)
+                        observation = controller.observation(model_rgb, frame.monotonic_time)
                         chunk, inference_s = policy.preview(observation)
                         warning_count = 0
                         for action in chunk:
@@ -1335,13 +1639,25 @@ def run_execute(config: dict, checked: dict) -> int:
                         if controller.armed:
                             if preview_chunk is None:
                                 raise RuntimeError("preview chunk is unexpectedly missing")
-                            policy.start(preview_chunk)
                             # A preview is single-use. After any motion, a new
                             # execution requires a new observation and preview.
-                            preview_chunk = None
                             preview_ok = False
                             start_frame = camera.latest(camera_max_age)
-                            visualizer.start_episode(start_frame.rgb)
+                            run_dir = visualizer.start_episode(start_frame.rgb)
+                            diagnostics.start(run_dir)
+                            if policy.time_alignment:
+                                policy.wait_idle()
+                                fresh_frame = camera.latest(camera_max_age)
+                                fresh_observation = controller.observation(
+                                    _model_camera_image(fresh_frame.rgb), fresh_frame.monotonic_time
+                                )
+                                print("Refreshing startup prediction while holding (time alignment enabled)")
+                                policy.start(preview_chunk, observation=fresh_observation)
+                            else:
+                                policy.start(preview_chunk)
+                            preview_chunk = None
+                            last_tick = None
+                            last_action = None
                             executing = True
                             episode_start = time.monotonic()
                             next_action = episode_start
@@ -1351,7 +1667,7 @@ def run_execute(config: dict, checked: dict) -> int:
                     policy.stop()
                     if controller.armed:
                         controller.hold_current()
-                        visualizer.finalize("operator_stop")
+                        finalize_episode("operator_stop")
                         print("EXECUTION STOPPED: holding current pose")
                 elif key == "h":
                     if executing:
@@ -1360,15 +1676,16 @@ def run_execute(config: dict, checked: dict) -> int:
                         print("Press a before homing")
                     else:
                         policy.stop()
-                        visualizer.finalize("home_requested")
+                        finalize_episode("home_requested")
                         controller.return_home()
                         preview_ok = False
                         preview_chunk = None
                 elif key == "e":
                     executing = False
-                    visualizer.finalize("emergency_stop")
+                    policy.stop()
+                    finalize_episode("emergency_stop")
                 elif key == "q":
-                    visualizer.finalize("quit")
+                    exit_reason = "quit"
                     break
 
                 if executing and controller.armed:
@@ -1377,15 +1694,20 @@ def run_execute(config: dict, checked: dict) -> int:
                         executing = False
                         policy.stop()
                         controller.hold_current()
-                        visualizer.finalize("max_episode_time")
+                        finalize_episode("max_episode_time")
                         print(f"MAX EPISODE TIME {max_episode:.1f}s reached; holding pose")
                     elif now >= next_action:
+                        tick_started = time.monotonic()
+                        tick_lateness = max(0.0, tick_started - next_action)
                         frame = camera.latest(camera_max_age)
                         model_rgb = _model_camera_image(frame.rgb)
-                        observation = controller.observation(model_rgb)
+                        observation = controller.observation(model_rgb, frame.monotonic_time)
                         action = policy.next_action(observation)
+                        warnings = []
+                        command_time = None
                         if action is not None:
                             warnings = controller.set_model_action(action)
+                            command_time = time.monotonic()
                             if warnings:
                                 print("ACTION SAFETY: " + "; ".join(sorted(set(warnings))))
                         visualizer.record(
@@ -1395,18 +1717,60 @@ def run_execute(config: dict, checked: dict) -> int:
                             np.asarray(observation["endpose"]["left_endpose"][:3]),
                         )
                         next_action += action_period
-                        if time.monotonic() - next_action > action_period:
+                        tick_done = time.monotonic()
+                        schedule_reset = tick_done - next_action > action_period
+                        if schedule_reset:
                             # Never catch up by bursting old actions.
                             next_action = time.monotonic() + action_period
+                        meta = policy.current_meta or {}
+                        aligned_index = meta.get("aligned_start_index")
+                        prediction_index = (aligned_index + policy._current_selected - 1
+                                            if aligned_index is not None and action is not None else None)
+                        prediction_time = (meta["alignment_reference_mono_s"] + prediction_index / policy.action_rate
+                                           if prediction_index is not None else None)
+                        diagnostics.record("ticks", {
+                            "tick_mono_s": tick_started,
+                            "tick_interval_s": None if last_tick is None else tick_started - last_tick,
+                            "action_interval_s": None if command_time is None or last_action is None else command_time - last_action,
+                            "command_mono_s": command_time,
+                            "work_s": tick_done - tick_started,
+                            "lateness_s": tick_lateness, "schedule_reset": int(schedule_reset),
+                            "action_available": int(action is not None),
+                            "queue_remaining": len(policy.actions),
+                            "pending_ready": int(policy.pending is not None),
+                            "inference_in_flight": int(policy.future is not None),
+                            "chunk_id": meta.get("chunk_id"),
+                            "chunk_actions_selected": policy._current_selected,
+                            "prediction_action_index": prediction_index,
+                            "prediction_action_time_mono_s": prediction_time,
+                            "alignment_phase_error_s": command_time - prediction_time if prediction_time is not None else None,
+                            "camera_age_s": observation["_runtime_timing"]["observation_mono_s"] - frame.monotonic_time,
+                            "observation_age_s": None if command_time is None or not meta else command_time - meta["observation_mono_s"],
+                            "action_camera_age_s": None if command_time is None or not meta else command_time - meta["camera_mono_s"],
+                            "safety_warning_count": len(warnings),
+                        })
+                        last_tick = tick_started
+                        if command_time is not None:
+                            last_action = command_time
                 time.sleep(0.002 if executing else 0.01)
         return 0
+    except BaseException:
+        exit_reason = "exception"
+        raise
     finally:
         if key_reader is not None:
             key_reader.close()
-        visualizer.finalize("program_exit")
-        policy.close()
-        controller.close()
-        camera.stop()
+        # Hardware cleanup precedes disk/plot work, including on exceptions.
+        try:
+            controller.close()
+        finally:
+            try:
+                camera.stop()
+            finally:
+                try:
+                    policy.close()
+                finally:
+                    finalize_episode(exit_reason)
 
 
 def parse_args() -> argparse.Namespace:

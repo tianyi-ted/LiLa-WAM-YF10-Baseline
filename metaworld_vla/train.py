@@ -82,6 +82,17 @@ def main():
     p.add_argument("--save-dir", required=True); p.add_argument("--resume", default=None)
     p.add_argument("--init-from", default=None); p.add_argument("--max-steps", type=int, default=None)
     args = p.parse_args(); cfg = OmegaConf.load(args.config)
+    if cfg.get('planwam', {}).get('stage'):
+        p.error('Use metaworld_vla/train_planwam.py for teacher/student/action_only configs')
+    # Opt-in only; old configs never construct a cache or change the batch.
+    from training_prior import prior_options, PriorDataset, prepare_source_batch, sha256
+    source_options = prior_options(cfg)
+    if source_options is not None and args.resume and args.init_from:
+        p.error('--resume and --init-from cannot be combined')
+    if source_options is not None and not args.resume and any(Path(args.save_dir).glob('checkpoint_epoch_*.pt')):
+        p.error('C/N/R output already has checkpoints: choose a new directory or --resume')
+    if source_options is not None and args.init_from:
+        p.error('C/N/R full-training protocol starts from scratch; omit --init-from')
     seed_everything(int(cfg.training.get("seed", 0)))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
@@ -95,6 +106,16 @@ def main():
     dataset_class = dataset_classes[dataset_format]
     log.info('Dataset format=%s, reader=%s', dataset_format, dataset_class.__name__)
     ds = dataset_class(str(dcfg.dataset_dir), list(dcfg.task_names), int(ccfg.action_chunk_size), int(ccfg.state_dim), tuple(dcfg.image_size), task_cond_dir, train_cfg['use_future_feat'] or train_cfg['use_global_intent'], dcfg.get("future_frame_offset", None), bool(dcfg.get("image_aug", False)), camera_name=str(dcfg.camera_names[0]))
+    selection_generator = None
+    source_metadata = None
+    if source_options is not None:
+        selection_generator = torch.Generator().manual_seed(source_options['selection_seed'])
+        source_metadata = dict(options=source_options, stats_sha256=sha256(args.stats))
+        if source_options['mode'] != 'cold':
+            ds = PriorDataset(ds, cfg, args.stats, source_options)
+        if source_options['mode'] == 'tail':
+            source_metadata['cache_manifest_sha256'] = sha256(Path(source_options['cache_dir']) / 'manifest.json')
+        log.info('Flow source protocol: %s', source_metadata)
     loader = DataLoader(ds, batch_size=int(tcfg.batch_size), shuffle=True, drop_last=True, num_workers=int(cfg.system.get("num_workers", 0)), pin_memory=bool(cfg.system.get("pin_memory", True)), collate_fn=collate_fn, persistent_workers=int(cfg.system.get("num_workers", 0)) > 0)
     vision, hidden, regs, patch = ModelFactory.create_vision_encoder(mcfg.vision_encoder.checkpoint_path, dtype=dtype, device=str(device))
     # Match the action model precision to the frozen DINO encoder and the
@@ -116,6 +137,14 @@ def main():
         action.load_state_dict(torch.load(args.init_from, map_location="cpu")["model_state"], strict=True)
     if args.resume:
         ck = torch.load(args.resume, map_location="cpu"); action.load_state_dict(ck["model_state"]); optimizer.load_state_dict(ck["optimizer_state"]); scheduler.load_state_dict(ck["scheduler_state"]); start_epoch = int(ck["epoch"]); global_step = int(ck.get("global_step", 0))
+        if source_options is not None:
+            if ck.get('source_protocol') != source_metadata:
+                raise ValueError('resume source protocol/cache/stats mismatch')
+            selection_generator.set_state(ck['source_selection_rng'])
+            random.setstate(ck['python_rng']); np.random.set_state(ck['numpy_rng'])
+            torch.set_rng_state(ck['torch_rng'])
+            if torch.cuda.is_available() and ck.get('cuda_rng') is not None:
+                torch.cuda.set_rng_state_all(ck['cuda_rng'])
     run = Path(args.save_dir); run.mkdir(parents=True, exist_ok=True); OmegaConf.save(cfg, run / "config.yaml")
     log_updates = int(tcfg.get('log_updates_per_epoch', 4))
     if log_updates < 1:
@@ -128,6 +157,8 @@ def main():
         progress_steps = epoch_log_steps(steps_this_epoch, log_updates)
         epoch_started = time.perf_counter()
         for batch in loader:
+            if source_options is not None and source_options['mode'] != 'cold':
+                active_fraction = prepare_source_batch(batch, source_options, selection_generator)
             optimizer.zero_grad(set_to_none=True)
             # Match the main RoboTwin trainer: autocast is required for the
             # mixed DINO/action-model path (time embeddings and decoder
@@ -144,11 +175,20 @@ def main():
             if epoch_steps in progress_steps:
                 log.info(format_progress(epoch + 1, int(tcfg.epochs), epoch_steps,
                          steps_this_epoch, step_loss, info, scheduler.get_last_lr()[0], train_cfg))
+                if source_options is not None:
+                    log.info('FlowSource mode=%s modified_sample_fraction=%.3f sigma=%.3f',
+                             source_options['mode'], 0.0 if source_options['mode'] == 'cold' else active_fraction,
+                             source_options['sigma'])
             if args.max_steps and global_step >= args.max_steps: break
         log.info('=== Epoch %d Completed. Avg Loss: %.4f | Time: %.1fs ===',
                  epoch + 1, total / max(1, epoch_steps), time.perf_counter() - epoch_started)
         if (epoch + 1) % int(tcfg.save_interval_epoch) == 0 or (args.max_steps and global_step >= args.max_steps):
-            torch.save({"image_rotation_degrees": IMAGE_ROTATION, "model_state": action.state_dict(), "optimizer_state": optimizer.state_dict(), "scheduler_state": scheduler.state_dict(), "epoch": epoch + 1, "global_step": global_step}, run / f"checkpoint_epoch_{epoch + 1}.pt")
+            extra = {}
+            if source_options is not None:
+                extra = dict(source_protocol=source_metadata, source_selection_rng=selection_generator.get_state(),
+                             python_rng=random.getstate(), numpy_rng=np.random.get_state(),
+                             torch_rng=torch.get_rng_state(), cuda_rng=torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None)
+            torch.save({"image_rotation_degrees": IMAGE_ROTATION, "model_state": action.state_dict(), "optimizer_state": optimizer.state_dict(), "scheduler_state": scheduler.state_dict(), "epoch": epoch + 1, "global_step": global_step, **extra}, run / f"checkpoint_epoch_{epoch + 1}.pt")
         if args.max_steps and global_step >= args.max_steps: break
 
 if __name__ == "__main__": main()

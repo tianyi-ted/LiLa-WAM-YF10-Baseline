@@ -1,5 +1,13 @@
 # LiLa-WAM 原生单臂真机推理
 
+2026-11-13的样条、异步接入与时间对齐测试已合并为[真机部署调整总报告](../../docs/EDULITE_DEPLOYMENT_COMPARISON_2026-11-13.md)，包含5种方案、15轮记录的统一指标和逐轮明细。
+
+新增默认关闭的[动作时间对齐](TIME_ALIGNMENT.md)：独立 `_aligned.yaml` 配置根据接入时的观测年龄选择预测窗口，原有配置继续保留原行为。
+
+新增可选的 [AdaPolicy风格部署实验](ADAPOLICY_DEPLOY_EXPERIMENT.md)：新结果就绪时替换队列、局部前三控制点重拟合。原配置仍使用既有行为，实验使用独立配置和输出目录。
+
+异步推理耗时、队列断供、控制周期与B样条诊断已接入；输出文件和参数对照见[平滑与时序调参](SMOOTHING_AND_TIMING.md)。
+
 真机 VLA 部署现在使用独立的 `edulite_deploy` conda 环境（已在本机创建）；环境版本、离线检查和运行命令见 [部署环境说明](DEPLOY_ENV.md)。训练仍使用 `RoboTwin`，轨迹回放可继续使用已验证的 `edulite_collect`。
 
 当前程序是 `real_vla.py`，只接受训练配置中的 `action_dim=7`、`state_dim=8`，执行从臂 can0 的 L1～L6 和 L7。使用 [config.real_single.yaml](config.real_single.yaml)；其中 checkpoint 路径仍是占位符，必须在完成新数据训练后填入实际目录。旧 RoboTwin 14D checkpoint、旧统计量和[归档配置](../docs/legacy/config.real_vla.14d.yaml)与当前程序不兼容。

@@ -16,15 +16,26 @@ hardware:
 runtime:
   action_rate_hz: 30.0
   control_rate_hz: 100.0
+  # Baseline: finish the old queue; experiments can use latest_ready.
+  chunk_update_mode: drain_queue
+  # Async prefetch is always active. With horizon=16, require 0 <= threshold < 16.
+  # 8 remaining actions at 30 Hz provide about 0.267 s for inference.
   prefetch_threshold_actions: 8
+  diagnostics:
+    # Buffered in memory; CSV/JSON are saved at episode end beside execution_trace.csv.
+    # Works even when visualization.enabled=false (creates a diagnostics_* directory).
+    enabled: true
+    method: weighted_history
   start_delay_s: 3.0
   max_episode_s: 60.0
   camera_max_age_s: 0.25
   require_preview_before_execute: true
   joint_bspline:
-    enabled: false
+    # Baseline: false. First smoothing comparison: true, keeping 2/8/4 below.
+    enabled: true
     degree: 3
     history_actions: 2
+    # Fewer controls usually smooth more but may change the intended path.
     control_points: 8
     history_weight: 4.0
     fallback_if_worse: true

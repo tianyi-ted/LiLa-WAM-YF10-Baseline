@@ -50,7 +50,7 @@ class RobotWinTaskDataset(data.Dataset):
                  val=False, image_aug=False,
                  task_cond_dir=None,
                  use_future_feat=False, future_frame_offset=None,
-                 action_dim=14, state_dim=16, task_names=None):
+                 action_dim=14, state_dim=16, task_names=None, strict_loading=False):
         """
         RobotWin Dataset for DINOv3-based VLA (no language input).
 
@@ -100,6 +100,7 @@ class RobotWinTaskDataset(data.Dataset):
         assert self.image_size[0] % 16 == 0 and self.image_size[1] % 16 == 0, \
             f"DINOv3 requires H/W to be multiples of 16, got {self.image_size}"
         self.val = val
+        self.strict_loading = strict_loading
         self.image_aug = image_aug
 
         # Task condition vector directory
@@ -411,6 +412,8 @@ class RobotWinTaskDataset(data.Dataset):
             return result
 
         except Exception as e:
+            if self.strict_loading:
+                raise
             logger.warning(f"Error loading idx {idx}: {e}")
             return self.__getitem__(random.randint(0, len(self) - 1))
 
@@ -442,6 +445,7 @@ def create_dataset(config: Any, val: bool = False):
     future_frame_offset = config.dataset.get('future_frame_offset', None)
 
     params = {
+        'strict_loading': bool(config.dataset.get('strict_loading', False)),
         'dataset_dir': config.dataset.dataset_dir,
         'indices_config': indices_config,
         'val': val,

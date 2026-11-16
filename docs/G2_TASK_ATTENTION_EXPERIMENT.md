@@ -1,5 +1,7 @@
 # G2 单 query 条件化汇聚实验
 
+后续独立路线（2026-11-04，已实现并通过CPU/真实数据单步测试，完整实验待运行）：[轻量PlanWAM式Posterior教师与G2学生实验方案](PLANWAM_LIGHTWEIGHT_G2_EXPERIMENT_ROADMAP.md)。保留学生task-attention；不引入action-prior R或attention-target；教师和学生均从头训练。命令见该文档第9节。
+
 日期：2026-10-22。此实验只改变全局意图预测器的输入汇聚，不改变未来监督目标。
 
 ## 已实现与兼容性
